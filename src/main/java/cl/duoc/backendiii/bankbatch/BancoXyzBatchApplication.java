@@ -1,0 +1,12 @@
+package cl.duoc.backendiii.bankbatch;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class BancoXyzBatchApplication {
+
+    public static void main(String[] args) {
+        SpringApplication.run(BancoXyzBatchApplication.class, args);
+    }
+}
