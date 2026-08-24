@@ -91,7 +91,7 @@ La consola tambien imprime un resumen por cada Job con registros leidos, escrito
 - **Tres Jobs independientes:** `dailyTransactionsJob`, `monthlyInterestJob` y `annualStatementsJob`.
 - **Chunks de tamano 5:** configurados mediante `batch.chunk-size=5`.
 - **Escalamiento con 3 hilos:** `ThreadPoolTaskExecutor` usa `batch.thread-pool-size=3` y se aplica a los tres Steps.
-- **Lectura segura en paralelo:** los CSV se leen con `SynchronizedItemStreamReader` y `saveState(false)` para evitar accesos concurrentes inseguros sobre `FlatFileItemReader`.
+- **Lectura segura en paralelo:** los CSV se leen con readers propios en memoria que implementan `ItemReader` y usan `synchronized read()`, siguiendo el enfoque del proyecto de referencia de Semana 2.
 - **Tolerancia a fallos:** cada Step usa `.faultTolerant()` con `BankRecordSkipPolicy`.
 - **Politica personalizada:** `BankRecordSkipPolicy` permite omitir errores controlados de lectura/formato dentro de un limite configurable.
 - **Trazabilidad de errores:** los rechazos de negocio y omisiones batch se guardan en `rejected_records`.
@@ -128,7 +128,7 @@ CSV legacy -> ItemReader -> ItemProcessor -> ItemWriter -> salida final
 Cada Step se ejecuta con chunks de 5 registros y un pool de 3 hilos:
 
 ```text
-CSV legacy -> SynchronizedItemStreamReader -> ItemProcessor -> ItemWriter
+CSV legacy -> ItemReader sincronizado en memoria -> ItemProcessor -> ItemWriter
                                      \-> faultTolerant + BankRecordSkipPolicy
                                      \-> TaskExecutor de 3 hilos
 ```

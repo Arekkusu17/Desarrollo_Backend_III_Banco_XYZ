@@ -11,6 +11,9 @@ import cl.duoc.backendiii.bankbatch.policy.BankRecordSkipPolicy;
 import cl.duoc.backendiii.bankbatch.processor.AnnualStatementProcessor;
 import cl.duoc.backendiii.bankbatch.processor.DailyTransactionProcessor;
 import cl.duoc.backendiii.bankbatch.processor.MonthlyInterestProcessor;
+import cl.duoc.backendiii.bankbatch.reader.LegacyAnnualEntryCsvReader;
+import cl.duoc.backendiii.bankbatch.reader.LegacyInterestAccountCsvReader;
+import cl.duoc.backendiii.bankbatch.reader.LegacyTransactionCsvReader;
 import cl.duoc.backendiii.bankbatch.writer.AnnualStatementReportWriter;
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.Step;
@@ -18,22 +21,19 @@ import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.batch.core.job.builder.JobBuilder;
 import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.batch.core.step.builder.StepBuilder;
-import org.springframework.batch.item.ItemStreamReader;
+import org.springframework.batch.item.ItemReader;
 import org.springframework.batch.item.database.JdbcBatchItemWriter;
 import org.springframework.batch.item.database.builder.JdbcBatchItemWriterBuilder;
-import org.springframework.batch.item.file.FlatFileItemReader;
-import org.springframework.batch.item.file.builder.FlatFileItemReaderBuilder;
-import org.springframework.batch.item.support.SynchronizedItemStreamReader;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.dao.TransientDataAccessException;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.transaction.PlatformTransactionManager;
 
 import javax.sql.DataSource;
+import java.io.IOException;
 
 // This class contains the configuration for the batch jobs, steps, readers, processors, and writers. 
 // It defines beans for reading legacy data from CSV files, processing it, and writing the results to a database. 
@@ -44,77 +44,27 @@ public class BatchConfiguration {
     @Bean
     // The @StepScope annotation indicates that the bean is scoped to the lifecycle of a step execution.
     // This reader loads the daily transactions file for the configured week.
-    // saveState(false) is used because the Step runs with parallel threads and does not rely on offset restart data.
-    // The delegate is wrapped with SynchronizedItemStreamReader to avoid unsafe concurrent reads.
+    // It follows the professor's Week 2 approach: a simple in-memory ItemReader with synchronized read().
+    // Since it does not implement ItemStream, Spring Batch does not store restart offset metadata for this parallel Step.
     @StepScope
-    public SynchronizedItemStreamReader<LegacyTransaction> transactionReader(@Value("${legacy.data.week}") String dataWeek) {
-        FlatFileItemReader<LegacyTransaction> delegate = new FlatFileItemReaderBuilder<LegacyTransaction>()
-                .name("transactionReader")
-                .saveState(false)
-                .resource(new ClassPathResource("input/" + dataWeek + "/transacciones.csv"))
-                .linesToSkip(1) // skip the header line
-                .delimited() // indicates that the file is delimited (e.g., CSV)
-                .delimiter(",") // specifies the delimiter used in the file
-                .names("id", "fecha", "monto", "tipo") // specifies the names of the fields in the file
-                .fieldSetMapper(
-                        // maps the fields in the file to a LegacyTransaction object
-                        fieldSet -> new LegacyTransaction(
-                                fieldSet.readString("id"),
-                                fieldSet.readString("fecha"),
-                                fieldSet.readString("monto"),
-                                fieldSet.readString("tipo")))
-                .build();
-        return synchronizedReader(delegate);
+    public LegacyTransactionCsvReader transactionReader(@Value("${legacy.data.week}") String dataWeek) throws IOException {
+        return new LegacyTransactionCsvReader("input/" + dataWeek + "/transacciones.csv");
     }
 
     @Bean
     // This reader loads the accounts used to calculate monthly interest.
-    // It follows the strategy: configurable CSV input and synchronized reading for parallel execution.
+    // It keeps CSV input configurable by week and inherits synchronized read() for parallel execution.
     @StepScope
-    public SynchronizedItemStreamReader<LegacyInterestAccount> interestReader(@Value("${legacy.data.week}") String dataWeek) {
-        FlatFileItemReader<LegacyInterestAccount> delegate = new FlatFileItemReaderBuilder<LegacyInterestAccount>()
-                .name("interestReader")
-                .saveState(false)
-                .resource(new ClassPathResource("input/" + dataWeek + "/intereses.csv"))
-                .linesToSkip(1)
-                .delimited()
-                .delimiter(",")
-                .names("cuenta_id", "nombre", "saldo", "edad", "tipo") // specifies the names of the fields in the file
-                .fieldSetMapper(
-                        // maps the fields in the file to a LegacyInterestAccount object
-                        fieldSet -> new LegacyInterestAccount(
-                                fieldSet.readString("cuenta_id"),
-                                fieldSet.readString("nombre"),
-                                fieldSet.readString("saldo"),
-                                fieldSet.readString("edad"),
-                                fieldSet.readString("tipo")))
-                .build();
-        return synchronizedReader(delegate);
+    public LegacyInterestAccountCsvReader interestReader(@Value("${legacy.data.week}") String dataWeek) throws IOException {
+        return new LegacyInterestAccountCsvReader("input/" + dataWeek + "/intereses.csv");
     }
 
     @Bean
     // This reader loads annual movements used to generate account statements.
-    // It is protected with SynchronizedItemStreamReader because the annual Step also uses a TaskExecutor.
+    // It uses the same in-memory synchronized reader pattern as the other Week 2 readers.
     @StepScope
-    public SynchronizedItemStreamReader<LegacyAnnualEntry> annualReader(@Value("${legacy.data.week}") String dataWeek) {
-        FlatFileItemReader<LegacyAnnualEntry> delegate = new FlatFileItemReaderBuilder<LegacyAnnualEntry>()
-                .name("annualReader")
-                .saveState(false)
-                .resource(new ClassPathResource("input/" + dataWeek + "/cuentas_anuales.csv"))
-                .linesToSkip(1)
-                .delimited()
-                .delimiter(",")
-                .names("cuenta_id", "fecha", "transaccion", "monto", "descripcion") // specifies the names of the fields in the file
-                .fieldSetMapper(
-                        // maps the fields in the file to a LegacyAnnualEntry object
-                        fieldSet -> new LegacyAnnualEntry(
-                                fieldSet.readString("cuenta_id"),
-                                fieldSet.readString("fecha"),
-                                fieldSet.readString("transaccion"),
-                                fieldSet.readString("monto"),
-                                fieldSet.readString("descripcion")))
-                .build();
-        return synchronizedReader(delegate);
+    public LegacyAnnualEntryCsvReader annualReader(@Value("${legacy.data.week}") String dataWeek) throws IOException {
+        return new LegacyAnnualEntryCsvReader("input/" + dataWeek + "/cuentas_anuales.csv");
     }
 
     @Bean
@@ -189,7 +139,7 @@ public class BatchConfiguration {
     // and parallel execution through batchTaskExecutor.
     public Step dailyTransactionsStep(JobRepository jobRepository,
                                       PlatformTransactionManager transactionManager,
-                                      ItemStreamReader<LegacyTransaction> transactionReader,
+                                      ItemReader<LegacyTransaction> transactionReader,
                                       DailyTransactionProcessor processor,
                                       JdbcBatchItemWriter<DailyTransactionSummary> transactionWriter,
                                       BankRecordSkipPolicy bankRecordSkipPolicy,
@@ -224,7 +174,7 @@ public class BatchConfiguration {
     // Uses the same fault-tolerance and scaling policy used by the other Steps.
     public Step monthlyInterestStep(JobRepository jobRepository,
                                     PlatformTransactionManager transactionManager,
-                                    ItemStreamReader<LegacyInterestAccount> interestReader,
+                                    ItemReader<LegacyInterestAccount> interestReader,
                                     MonthlyInterestProcessor processor,
                                     JdbcBatchItemWriter<MonthlyInterestResult> interestWriter,
                                     BankRecordSkipPolicy bankRecordSkipPolicy,
@@ -258,7 +208,7 @@ public class BatchConfiguration {
     // Uses the same fault-tolerance and scaling policy used by the other Steps.
     public Step annualStatementsStep(JobRepository jobRepository,
                                      PlatformTransactionManager transactionManager,
-                                     ItemStreamReader<LegacyAnnualEntry> annualReader,
+                                     ItemReader<LegacyAnnualEntry> annualReader,
                                      AnnualStatementProcessor processor,
                                      AnnualStatementReportWriter annualStatementReportWriter,
                                      BankRecordSkipPolicy bankRecordSkipPolicy,
@@ -320,12 +270,5 @@ public class BatchConfiguration {
                 .start(annualStatementsStep)
                 .listener(jobExecutionSummaryListener)
                 .build();
-    }
-
-    // Helper method to reuse the same synchronized wrapper across all CSV readers.
-    private <T> SynchronizedItemStreamReader<T> synchronizedReader(FlatFileItemReader<T> delegate) {
-        SynchronizedItemStreamReader<T> reader = new SynchronizedItemStreamReader<>();
-        reader.setDelegate(delegate);
-        return reader;
     }
 }
