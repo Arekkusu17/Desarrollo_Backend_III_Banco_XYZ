@@ -207,9 +207,12 @@ public class BatchConfiguration {
     // The dailyTransactionsJob bean defines a batch job that consists of the dailyTransactionsStep.
     // It orchestrates the execution of the step and manages the job lifecycle.
     // Job flow: dailyTransactionsJob -> dailyTransactionsStep.
-    public Job dailyTransactionsJob(JobRepository jobRepository, Step dailyTransactionsStep) {
+    public Job dailyTransactionsJob(JobRepository jobRepository,
+                                    Step dailyTransactionsStep,
+                                    JobExecutionSummaryListener jobExecutionSummaryListener) {
         return new JobBuilder("dailyTransactionsJob", jobRepository)
                 .start(dailyTransactionsStep)
+                .listener(jobExecutionSummaryListener)
                 .build();
     }
 
@@ -217,9 +220,12 @@ public class BatchConfiguration {
     // The monthlyInterestJob bean defines a batch job that consists of the monthlyInterestStep.
     // It orchestrates the execution of the step and manages the job lifecycle.
     // Job flow: monthlyInterestJob -> monthlyInterestStep.
-    public Job monthlyInterestJob(JobRepository jobRepository, Step monthlyInterestStep) {
+    public Job monthlyInterestJob(JobRepository jobRepository,
+                                  Step monthlyInterestStep,
+                                  JobExecutionSummaryListener jobExecutionSummaryListener) {
         return new JobBuilder("monthlyInterestJob", jobRepository)
                 .start(monthlyInterestStep)
+                .listener(jobExecutionSummaryListener)
                 .build();
     }
 
@@ -227,9 +233,12 @@ public class BatchConfiguration {
     // The annualStatementsJob bean defines a batch job that consists of the annualStatementsStep.
     // It orchestrates the execution of the step and manages the job lifecycle.
     // Job flow: annualStatementsJob -> annualStatementsStep.
-    public Job annualStatementsJob(JobRepository jobRepository, Step annualStatementsStep) {
+    public Job annualStatementsJob(JobRepository jobRepository,
+                                   Step annualStatementsStep,
+                                   JobExecutionSummaryListener jobExecutionSummaryListener) {
         return new JobBuilder("annualStatementsJob", jobRepository)
                 .start(annualStatementsStep)
+                .listener(jobExecutionSummaryListener)
                 .build();
     }
 }
