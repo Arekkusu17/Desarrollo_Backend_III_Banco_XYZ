@@ -22,6 +22,11 @@ public class AnnualStatementReportWriter implements ItemWriter<AnnualStatementEn
 
     private final JdbcTemplate jdbcTemplate;
     private final AtomicBoolean initialized = new AtomicBoolean(false);
+    // The annual Step runs with a TaskExecutor, so multiple worker threads can call this writer at the same time.
+    // PostgreSQL writes are handled safely by JdbcTemplate and the database transaction, but appending to a plain CSV
+    // file is not atomic at the chunk level. This lock serializes only the file initialization and append operations,
+    // preventing interleaved lines or a header being written while another thread is appending data.
+    private final Object reportLock = new Object();
 
     public AnnualStatementReportWriter(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
@@ -48,6 +53,12 @@ public class AnnualStatementReportWriter implements ItemWriter<AnnualStatementEn
                     ps.setString(6, item.auditFlag());
                 });
 
+        appendReportLines(chunk);
+    }
+
+    private void appendReportLines(Chunk<? extends AnnualStatementEntry> chunk) throws IOException {
+        // Build the chunk text before entering the synchronized block so the lock is held only during file IO.
+        // This keeps the critical section short while still writing each chunk as one contiguous CSV append.
         StringBuilder lines = new StringBuilder();
         for (AnnualStatementEntry item : chunk) {
             lines.append(item.accountId()).append(',')
@@ -57,18 +68,24 @@ public class AnnualStatementReportWriter implements ItemWriter<AnnualStatementEn
                     .append(escape(item.description())).append(',')
                     .append(item.auditFlag()).append(System.lineSeparator());
         }
-        Files.writeString(REPORT_PATH, lines.toString(), StandardCharsets.UTF_8, StandardOpenOption.APPEND);
+        synchronized (reportLock) {
+            Files.writeString(REPORT_PATH, lines.toString(), StandardCharsets.UTF_8, StandardOpenOption.APPEND);
+        }
     }
 
     // This method initializes the CSV report file by creating the necessary directories and writing the header line if it hasn't been initialized yet.
     private void initializeReport() throws IOException {
-        if (initialized.compareAndSet(false, true)) {
-            Files.createDirectories(REPORT_PATH.getParent());
-            Files.writeString(REPORT_PATH,
-                    "account_id,transaction_date,transaction_type,amount,description,audit_flag" + System.lineSeparator(),
-                    StandardCharsets.UTF_8,
-                    StandardOpenOption.CREATE,
-                    StandardOpenOption.TRUNCATE_EXISTING);
+        // The lock works together with initialized.compareAndSet: only one thread creates/truncates the report,
+        // and every other thread waits until the header is ready before appending its chunk.
+        synchronized (reportLock) {
+            if (initialized.compareAndSet(false, true)) {
+                Files.createDirectories(REPORT_PATH.getParent());
+                Files.writeString(REPORT_PATH,
+                        "account_id,transaction_date,transaction_type,amount,description,audit_flag" + System.lineSeparator(),
+                        StandardCharsets.UTF_8,
+                        StandardOpenOption.CREATE,
+                        StandardOpenOption.TRUNCATE_EXISTING);
+            }
         }
     }
 

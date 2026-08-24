@@ -6,6 +6,8 @@ import cl.duoc.backendiii.bankbatch.domain.LegacyAnnualEntry;
 import cl.duoc.backendiii.bankbatch.domain.LegacyInterestAccount;
 import cl.duoc.backendiii.bankbatch.domain.LegacyTransaction;
 import cl.duoc.backendiii.bankbatch.domain.MonthlyInterestResult;
+import cl.duoc.backendiii.bankbatch.listener.BankSkipListener;
+import cl.duoc.backendiii.bankbatch.policy.BankRecordSkipPolicy;
 import cl.duoc.backendiii.bankbatch.processor.AnnualStatementProcessor;
 import cl.duoc.backendiii.bankbatch.processor.DailyTransactionProcessor;
 import cl.duoc.backendiii.bankbatch.processor.MonthlyInterestProcessor;
@@ -16,14 +18,19 @@ import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.batch.core.job.builder.JobBuilder;
 import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.batch.core.step.builder.StepBuilder;
+import org.springframework.batch.item.ItemStreamReader;
 import org.springframework.batch.item.database.JdbcBatchItemWriter;
 import org.springframework.batch.item.database.builder.JdbcBatchItemWriterBuilder;
 import org.springframework.batch.item.file.FlatFileItemReader;
 import org.springframework.batch.item.file.builder.FlatFileItemReaderBuilder;
+import org.springframework.batch.item.support.SynchronizedItemStreamReader;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.core.task.TaskExecutor;
+import org.springframework.dao.TransientDataAccessException;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.transaction.PlatformTransactionManager;
 
 import javax.sql.DataSource;
@@ -36,10 +43,14 @@ public class BatchConfiguration {
 
     @Bean
     // The @StepScope annotation indicates that the bean is scoped to the lifecycle of a step execution.
+    // This reader loads the daily transactions file for the configured week.
+    // saveState(false) is used because the Step runs with parallel threads and does not rely on offset restart data.
+    // The delegate is wrapped with SynchronizedItemStreamReader to avoid unsafe concurrent reads.
     @StepScope
-    public FlatFileItemReader<LegacyTransaction> transactionReader(@Value("${legacy.data.week}") String dataWeek) {
-        return new FlatFileItemReaderBuilder<LegacyTransaction>()
+    public SynchronizedItemStreamReader<LegacyTransaction> transactionReader(@Value("${legacy.data.week}") String dataWeek) {
+        FlatFileItemReader<LegacyTransaction> delegate = new FlatFileItemReaderBuilder<LegacyTransaction>()
                 .name("transactionReader")
+                .saveState(false)
                 .resource(new ClassPathResource("input/" + dataWeek + "/transacciones.csv"))
                 .linesToSkip(1) // skip the header line
                 .delimited() // indicates that the file is delimited (e.g., CSV)
@@ -53,13 +64,17 @@ public class BatchConfiguration {
                                 fieldSet.readString("monto"),
                                 fieldSet.readString("tipo")))
                 .build();
+        return synchronizedReader(delegate);
     }
 
     @Bean
+    // This reader loads the accounts used to calculate monthly interest.
+    // It follows the strategy: configurable CSV input and synchronized reading for parallel execution.
     @StepScope
-    public FlatFileItemReader<LegacyInterestAccount> interestReader(@Value("${legacy.data.week}") String dataWeek) {
-        return new FlatFileItemReaderBuilder<LegacyInterestAccount>()
+    public SynchronizedItemStreamReader<LegacyInterestAccount> interestReader(@Value("${legacy.data.week}") String dataWeek) {
+        FlatFileItemReader<LegacyInterestAccount> delegate = new FlatFileItemReaderBuilder<LegacyInterestAccount>()
                 .name("interestReader")
+                .saveState(false)
                 .resource(new ClassPathResource("input/" + dataWeek + "/intereses.csv"))
                 .linesToSkip(1)
                 .delimited()
@@ -74,13 +89,17 @@ public class BatchConfiguration {
                                 fieldSet.readString("edad"),
                                 fieldSet.readString("tipo")))
                 .build();
+        return synchronizedReader(delegate);
     }
 
     @Bean
+    // This reader loads annual movements used to generate account statements.
+    // It is protected with SynchronizedItemStreamReader because the annual Step also uses a TaskExecutor.
     @StepScope
-    public FlatFileItemReader<LegacyAnnualEntry> annualReader(@Value("${legacy.data.week}") String dataWeek) {
-        return new FlatFileItemReaderBuilder<LegacyAnnualEntry>()
+    public SynchronizedItemStreamReader<LegacyAnnualEntry> annualReader(@Value("${legacy.data.week}") String dataWeek) {
+        FlatFileItemReader<LegacyAnnualEntry> delegate = new FlatFileItemReaderBuilder<LegacyAnnualEntry>()
                 .name("annualReader")
+                .saveState(false)
                 .resource(new ClassPathResource("input/" + dataWeek + "/cuentas_anuales.csv"))
                 .linesToSkip(1)
                 .delimited()
@@ -95,6 +114,23 @@ public class BatchConfiguration {
                                 fieldSet.readString("monto"),
                                 fieldSet.readString("descripcion")))
                 .build();
+        return synchronizedReader(delegate);
+    }
+
+    @Bean
+    // Scaling bean.
+    // It configures a thread pool to process chunks in parallel; by default it uses 3 threads.
+    // The prefix helps show in the console that processing is using BankBatch-* threads.
+    public TaskExecutor batchTaskExecutor(@Value("${batch.thread-pool-size}") int threadPoolSize) {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(threadPoolSize);
+        executor.setMaxPoolSize(threadPoolSize);
+        executor.setQueueCapacity(threadPoolSize * 4);
+        executor.setThreadNamePrefix("BankBatch-");
+        executor.setDaemon(true);
+        executor.setWaitForTasksToCompleteOnShutdown(true);
+        executor.initialize();
+        return executor;
     }
 
     @Bean
@@ -149,17 +185,33 @@ public class BatchConfiguration {
     // and writes the results to the database using the transactionWriter.
     // Flow: transacciones.csv -> transactionReader -> DailyTransactionProcessor
     //       -> transactionWriter -> daily_transaction_summary.
+    // Uses chunks of size 5, fault tolerance, retry for transient database failures,
+    // and parallel execution through batchTaskExecutor.
     public Step dailyTransactionsStep(JobRepository jobRepository,
                                       PlatformTransactionManager transactionManager,
-                                      FlatFileItemReader<LegacyTransaction> transactionReader,
+                                      ItemStreamReader<LegacyTransaction> transactionReader,
                                       DailyTransactionProcessor processor,
                                       JdbcBatchItemWriter<DailyTransactionSummary> transactionWriter,
+                                      BankRecordSkipPolicy bankRecordSkipPolicy,
+                                      BankSkipListener bankSkipListener,
+                                      TaskExecutor batchTaskExecutor,
                                       @Value("${batch.chunk-size}") int chunkSize) {
         return new StepBuilder("dailyTransactionsStep", jobRepository)
                 .<LegacyTransaction, DailyTransactionSummary>chunk(chunkSize, transactionManager)
                 .reader(transactionReader)
                 .processor(processor)
                 .writer(transactionWriter)
+                // Enables Spring Batch's formal error handling.
+                .faultTolerant()
+                // Retries temporary data access failures before marking the chunk as failed.
+                .retry(TransientDataAccessException.class)
+                .retryLimit(2)
+                // Custom policy that decides which controlled errors can be skipped.
+                .skipPolicy(bankRecordSkipPolicy)
+                // Listener that stores read, process, and write skips in rejected_records.
+                .listener(bankSkipListener)
+                // Scaling: allows chunks to be processed in parallel with the configured pool.
+                .taskExecutor(batchTaskExecutor)
                 .build();
     }
 
@@ -169,17 +221,31 @@ public class BatchConfiguration {
     // and writes the results to the database using the interestWriter.
     // Flow: intereses.csv -> interestReader -> MonthlyInterestProcessor
     //       -> interestWriter -> monthly_interest_results.
+    // Uses the same fault-tolerance and scaling policy used by the other Steps.
     public Step monthlyInterestStep(JobRepository jobRepository,
                                     PlatformTransactionManager transactionManager,
-                                    FlatFileItemReader<LegacyInterestAccount> interestReader,
+                                    ItemStreamReader<LegacyInterestAccount> interestReader,
                                     MonthlyInterestProcessor processor,
                                     JdbcBatchItemWriter<MonthlyInterestResult> interestWriter,
+                                    BankRecordSkipPolicy bankRecordSkipPolicy,
+                                    BankSkipListener bankSkipListener,
+                                    TaskExecutor batchTaskExecutor,
                                     @Value("${batch.chunk-size}") int chunkSize) {
         return new StepBuilder("monthlyInterestStep", jobRepository)
                 .<LegacyInterestAccount, MonthlyInterestResult>chunk(chunkSize, transactionManager)
                 .reader(interestReader)
                 .processor(processor)
                 .writer(interestWriter)
+                // Allows the Job to continue when controlled errors affect isolated records.
+                .faultTolerant()
+                .retry(TransientDataAccessException.class)
+                .retryLimit(2)
+                // Limits and classifies the errors that can be skipped.
+                .skipPolicy(bankRecordSkipPolicy)
+                // Centralizes skip traceability in the rejected_records table.
+                .listener(bankSkipListener)
+                // Runs interest chunks using the configured 3-thread pool.
+                .taskExecutor(batchTaskExecutor)
                 .build();
     }
 
@@ -189,17 +255,31 @@ public class BatchConfiguration {
     // and writes the results to a report using the AnnualStatementReportWriter.
     // Flow: cuentas_anuales.csv -> annualReader -> AnnualStatementProcessor
     //       -> AnnualStatementReportWriter -> annual_statement_entries + annual_statement_report.csv.
+    // Uses the same fault-tolerance and scaling policy used by the other Steps.
     public Step annualStatementsStep(JobRepository jobRepository,
                                      PlatformTransactionManager transactionManager,
-                                     FlatFileItemReader<LegacyAnnualEntry> annualReader,
+                                     ItemStreamReader<LegacyAnnualEntry> annualReader,
                                      AnnualStatementProcessor processor,
                                      AnnualStatementReportWriter annualStatementReportWriter,
+                                     BankRecordSkipPolicy bankRecordSkipPolicy,
+                                     BankSkipListener bankSkipListener,
+                                     TaskExecutor batchTaskExecutor,
                                      @Value("${batch.chunk-size}") int chunkSize) {
         return new StepBuilder("annualStatementsStep", jobRepository)
                 .<LegacyAnnualEntry, AnnualStatementEntry>chunk(chunkSize, transactionManager)
                 .reader(annualReader)
                 .processor(processor)
                 .writer(annualStatementReportWriter)
+                // Enables skip/retry behavior at the Spring Batch level for the annual process.
+                .faultTolerant()
+                .retry(TransientDataAccessException.class)
+                .retryLimit(2)
+                // Defines which controlled errors can be skipped without stopping the whole Job.
+                .skipPolicy(bankRecordSkipPolicy)
+                // Registers batch skips for later audit.
+                .listener(bankSkipListener)
+                // Processes annual chunks in parallel using BankBatch-* threads.
+                .taskExecutor(batchTaskExecutor)
                 .build();
     }
 
@@ -240,5 +320,12 @@ public class BatchConfiguration {
                 .start(annualStatementsStep)
                 .listener(jobExecutionSummaryListener)
                 .build();
+    }
+
+    // Helper method to reuse the same synchronized wrapper across all CSV readers.
+    private <T> SynchronizedItemStreamReader<T> synchronizedReader(FlatFileItemReader<T> delegate) {
+        SynchronizedItemStreamReader<T> reader = new SynchronizedItemStreamReader<>();
+        reader.setDelegate(delegate);
+        return reader;
     }
 }

@@ -1,10 +1,12 @@
 # Banco XYZ Batch
 
-Proyecto Spring Batch para modernizar tres procesos legacy del Banco XYZ:
+Solucion Semana 2 de Desarrollo Backend III para modernizar tres procesos legacy del Banco XYZ con Spring Batch:
 
 - Reporte de transacciones diarias.
 - Calculo de intereses mensuales.
 - Generacion de estados de cuenta anuales.
+
+La implementacion aplica procesamiento por chunks, tolerancia a fallos personalizada, registro de rechazos y escalamiento con 3 hilos de ejecucion paralela.
 
 ## Base de datos 
 
@@ -29,10 +31,19 @@ Si no tienes Maven Wrapper generado, usa:
 mvn spring-boot:run
 ```
 
-Por defecto se procesan los CSV de `src/main/resources/input/semana_3`. Para cambiar semana:
+Por defecto se procesan los CSV de `src/main/resources/input/semana_2`. Para cambiar semana:
 
 ```bash
 mvn spring-boot:run -Dspring-boot.run.arguments="--legacy.data.week=semana_1"
+```
+
+Parametros batch principales:
+
+```properties
+legacy.data.week=semana_2
+batch.chunk-size=5
+batch.thread-pool-size=3
+batch.skip-limit=10
 ```
 
 Configuracion minima de base de datos:
@@ -75,6 +86,17 @@ ORDER BY id;
 
 La consola tambien imprime un resumen por cada Job con registros leidos, escritos, filtrados, commits, tabla de salida y rechazos de esa ejecucion. Ese resumen permite trazar rapidamente que se leyo, que se transformo y que quedo persistido.
 
+## Caracteristicas Semana 2
+
+- **Tres Jobs independientes:** `dailyTransactionsJob`, `monthlyInterestJob` y `annualStatementsJob`.
+- **Chunks de tamano 5:** configurados mediante `batch.chunk-size=5`.
+- **Escalamiento con 3 hilos:** `ThreadPoolTaskExecutor` usa `batch.thread-pool-size=3` y se aplica a los tres Steps.
+- **Lectura segura en paralelo:** los CSV se leen con `SynchronizedItemStreamReader` y `saveState(false)` para evitar accesos concurrentes inseguros sobre `FlatFileItemReader`.
+- **Tolerancia a fallos:** cada Step usa `.faultTolerant()` con `BankRecordSkipPolicy`.
+- **Politica personalizada:** `BankRecordSkipPolicy` permite omitir errores controlados de lectura/formato dentro de un limite configurable.
+- **Trazabilidad de errores:** los rechazos de negocio y omisiones batch se guardan en `rejected_records`.
+- **Writer anual concurrente:** `AnnualStatementReportWriter` sincroniza la escritura de `output/annual_statement_report.csv`.
+
 ## Evidencias de ejecucion
 
 ### Consola de ejecucion
@@ -101,6 +123,14 @@ La aplicacion ejecuta tres Jobs independientes. Cada Job tiene un Step principal
 
 ```text
 CSV legacy -> ItemReader -> ItemProcessor -> ItemWriter -> salida final
+```
+
+Cada Step se ejecuta con chunks de 5 registros y un pool de 3 hilos:
+
+```text
+CSV legacy -> SynchronizedItemStreamReader -> ItemProcessor -> ItemWriter
+                                     \-> faultTolerant + BankRecordSkipPolicy
+                                     \-> TaskExecutor de 3 hilos
 ```
 
 ### Trazabilidad general
@@ -212,6 +242,8 @@ annualStatementsJob
 - Intereses: acepta solo cuentas `ahorro` y `prestamo`; rechaza edades fuera de rango y saldos invalidos.
 
 Los rechazos se guardan en `rejected_records` con proceso, clave, motivo y payload original para auditoria.
+
+Ademas, los errores omitidos por Spring Batch en etapas de lectura, procesamiento o escritura son registrados por `BankSkipListener` en la misma tabla para mantener una trazabilidad centralizada.
 
 ## Ejemplos de validacion y manejo de errores
 
