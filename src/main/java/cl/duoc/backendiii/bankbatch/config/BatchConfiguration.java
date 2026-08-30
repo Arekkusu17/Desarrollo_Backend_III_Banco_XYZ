@@ -145,7 +145,8 @@ public class BatchConfiguration {
                                       BankRecordSkipPolicy bankRecordSkipPolicy,
                                       BankSkipListener bankSkipListener,
                                       TaskExecutor batchTaskExecutor,
-                                      @Value("${batch.chunk-size}") int chunkSize) {
+                                      @Value("${batch.chunk-size}") int chunkSize,
+                                      @Value("${batch.retry-limit}") int retryLimit) {
         return new StepBuilder("dailyTransactionsStep", jobRepository)
                 .<LegacyTransaction, DailyTransactionSummary>chunk(chunkSize, transactionManager)
                 .reader(transactionReader)
@@ -155,7 +156,7 @@ public class BatchConfiguration {
                 .faultTolerant()
                 // Retries temporary data access failures before marking the chunk as failed.
                 .retry(TransientDataAccessException.class)
-                .retryLimit(2)
+                .retryLimit(retryLimit)
                 // Custom policy that decides which controlled errors can be skipped.
                 .skipPolicy(bankRecordSkipPolicy)
                 // Listener that stores read, process, and write skips in rejected_records.
@@ -180,7 +181,8 @@ public class BatchConfiguration {
                                     BankRecordSkipPolicy bankRecordSkipPolicy,
                                     BankSkipListener bankSkipListener,
                                     TaskExecutor batchTaskExecutor,
-                                    @Value("${batch.chunk-size}") int chunkSize) {
+                                    @Value("${batch.chunk-size}") int chunkSize,
+                                    @Value("${batch.retry-limit}") int retryLimit) {
         return new StepBuilder("monthlyInterestStep", jobRepository)
                 .<LegacyInterestAccount, MonthlyInterestResult>chunk(chunkSize, transactionManager)
                 .reader(interestReader)
@@ -189,7 +191,7 @@ public class BatchConfiguration {
                 // Allows the Job to continue when controlled errors affect isolated records.
                 .faultTolerant()
                 .retry(TransientDataAccessException.class)
-                .retryLimit(2)
+                .retryLimit(retryLimit)
                 // Limits and classifies the errors that can be skipped.
                 .skipPolicy(bankRecordSkipPolicy)
                 // Centralizes skip traceability in the rejected_records table.
@@ -214,7 +216,8 @@ public class BatchConfiguration {
                                      BankRecordSkipPolicy bankRecordSkipPolicy,
                                      BankSkipListener bankSkipListener,
                                      TaskExecutor batchTaskExecutor,
-                                     @Value("${batch.chunk-size}") int chunkSize) {
+                                     @Value("${batch.chunk-size}") int chunkSize,
+                                     @Value("${batch.retry-limit}") int retryLimit) {
         return new StepBuilder("annualStatementsStep", jobRepository)
                 .<LegacyAnnualEntry, AnnualStatementEntry>chunk(chunkSize, transactionManager)
                 .reader(annualReader)
@@ -223,7 +226,7 @@ public class BatchConfiguration {
                 // Enables skip/retry behavior at the Spring Batch level for the annual process.
                 .faultTolerant()
                 .retry(TransientDataAccessException.class)
-                .retryLimit(2)
+                .retryLimit(retryLimit)
                 // Defines which controlled errors can be skipped without stopping the whole Job.
                 .skipPolicy(bankRecordSkipPolicy)
                 // Registers batch skips for later audit.
@@ -239,10 +242,17 @@ public class BatchConfiguration {
     // Job flow: dailyTransactionsJob -> dailyTransactionsStep.
     public Job dailyTransactionsJob(JobRepository jobRepository,
                                     Step dailyTransactionsStep,
-                                    JobExecutionSummaryListener jobExecutionSummaryListener) {
+                                    JobExecutionSummaryListener jobExecutionSummaryListener,
+                                    BankJobCompletionDecider bankJobCompletionDecider) {
         return new JobBuilder("dailyTransactionsJob", jobRepository)
-                .start(dailyTransactionsStep)
                 .listener(jobExecutionSummaryListener)
+                .start(dailyTransactionsStep)
+                .next(bankJobCompletionDecider)
+                .on(BankJobCompletionDecider.REVIEW_REQUIRED).end(BankJobCompletionDecider.REVIEW_REQUIRED)
+                .from(bankJobCompletionDecider).on(BankJobCompletionDecider.COMPLETED_WITH_SKIPS).end(BankJobCompletionDecider.COMPLETED_WITH_SKIPS)
+                .from(bankJobCompletionDecider).on(BankJobCompletionDecider.FAILED).fail()
+                .from(bankJobCompletionDecider).on("*").end()
+                .build()
                 .build();
     }
 
@@ -252,10 +262,17 @@ public class BatchConfiguration {
     // Job flow: monthlyInterestJob -> monthlyInterestStep.
     public Job monthlyInterestJob(JobRepository jobRepository,
                                   Step monthlyInterestStep,
-                                  JobExecutionSummaryListener jobExecutionSummaryListener) {
+                                  JobExecutionSummaryListener jobExecutionSummaryListener,
+                                  BankJobCompletionDecider bankJobCompletionDecider) {
         return new JobBuilder("monthlyInterestJob", jobRepository)
-                .start(monthlyInterestStep)
                 .listener(jobExecutionSummaryListener)
+                .start(monthlyInterestStep)
+                .next(bankJobCompletionDecider)
+                .on(BankJobCompletionDecider.REVIEW_REQUIRED).end(BankJobCompletionDecider.REVIEW_REQUIRED)
+                .from(bankJobCompletionDecider).on(BankJobCompletionDecider.COMPLETED_WITH_SKIPS).end(BankJobCompletionDecider.COMPLETED_WITH_SKIPS)
+                .from(bankJobCompletionDecider).on(BankJobCompletionDecider.FAILED).fail()
+                .from(bankJobCompletionDecider).on("*").end()
+                .build()
                 .build();
     }
 
@@ -265,10 +282,17 @@ public class BatchConfiguration {
     // Job flow: annualStatementsJob -> annualStatementsStep.
     public Job annualStatementsJob(JobRepository jobRepository,
                                    Step annualStatementsStep,
-                                   JobExecutionSummaryListener jobExecutionSummaryListener) {
+                                   JobExecutionSummaryListener jobExecutionSummaryListener,
+                                   BankJobCompletionDecider bankJobCompletionDecider) {
         return new JobBuilder("annualStatementsJob", jobRepository)
-                .start(annualStatementsStep)
                 .listener(jobExecutionSummaryListener)
+                .start(annualStatementsStep)
+                .next(bankJobCompletionDecider)
+                .on(BankJobCompletionDecider.REVIEW_REQUIRED).end(BankJobCompletionDecider.REVIEW_REQUIRED)
+                .from(bankJobCompletionDecider).on(BankJobCompletionDecider.COMPLETED_WITH_SKIPS).end(BankJobCompletionDecider.COMPLETED_WITH_SKIPS)
+                .from(bankJobCompletionDecider).on(BankJobCompletionDecider.FAILED).fail()
+                .from(bankJobCompletionDecider).on("*").end()
+                .build()
                 .build();
     }
 }

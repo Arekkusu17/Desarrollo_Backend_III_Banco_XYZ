@@ -7,6 +7,7 @@ Solucion Semana 2 de Desarrollo Backend III para modernizar tres procesos legacy
 - Generacion de estados de cuenta anuales.
 
 La implementacion aplica procesamiento por chunks, tolerancia a fallos personalizada, registro de rechazos y escalamiento con 3 hilos de ejecucion paralela.
+Tambien incorpora una decision operativa al cierre de cada Job para distinguir ejecuciones limpias, ejecuciones con omisiones controladas y casos que requieren revision.
 
 ## Base de datos 
 
@@ -44,6 +45,8 @@ legacy.data.week=semana_2
 batch.chunk-size=5
 batch.thread-pool-size=3
 batch.skip-limit=10
+batch.retry-limit=2
+batch.review-skip-threshold=3
 ```
 
 Configuracion minima de base de datos:
@@ -84,7 +87,13 @@ FROM rejected_records
 ORDER BY id;
 ```
 
-La consola tambien imprime un resumen por cada Job con registros leidos, escritos, filtrados, commits, tabla de salida y rechazos de esa ejecucion. Ese resumen permite trazar rapidamente que se leyo, que se transformo y que quedo persistido.
+Para revisar los rechazos mas recientes:
+
+```bash
+docker exec banco-xyz-postgres psql -U banco -d banco_xyz -c "SELECT process_name, record_key, reason FROM rejected_records ORDER BY id DESC LIMIT 10;"
+```
+
+La consola tambien imprime un resumen por cada Job con registros leidos, escritos, filtrados, skips tecnicos, commits, rollbacks, tabla de salida, rechazos de esa ejecucion y decision operativa final. Ese resumen permite trazar rapidamente que se leyo, que se transformo, que quedo persistido y si el resultado puede cerrarse o debe revisarse.
 
 ## Caracteristicas Semana 2
 
@@ -94,6 +103,8 @@ La consola tambien imprime un resumen por cada Job con registros leidos, escrito
 - **Lectura segura en paralelo:** los CSV se leen con readers propios en memoria que implementan `ItemReader` y usan `synchronized read()`, siguiendo el enfoque del proyecto de referencia de Semana 2.
 - **Tolerancia a fallos:** cada Step usa `.faultTolerant()` con `BankRecordSkipPolicy`.
 - **Politica personalizada:** `BankRecordSkipPolicy` permite omitir errores controlados de lectura/formato dentro de un limite configurable.
+- **Retry configurable:** los reintentos ante `TransientDataAccessException` usan `batch.retry-limit`, por lo que el limite no queda fijo en el codigo.
+- **Decision operativa final:** `BankJobCompletionDecider` evalua el estado del Step y sus skips para clasificar el cierre como `COMPLETED`, `COMPLETED_WITH_SKIPS`, `REVIEW_REQUIRED` o `FAILED`.
 - **Trazabilidad de errores:** los rechazos de negocio y omisiones batch se guardan en `rejected_records`.
 - **Writer anual concurrente:** `AnnualStatementReportWriter` sincroniza la escritura de `output/annual_statement_report.csv`.
 
@@ -130,7 +141,9 @@ Cada Step se ejecuta con chunks de 5 registros y un pool de 3 hilos:
 ```text
 CSV legacy -> ItemReader sincronizado en memoria -> ItemProcessor -> ItemWriter
                                      \-> faultTolerant + BankRecordSkipPolicy
+                                     \-> retryLimit configurable
                                      \-> TaskExecutor de 3 hilos
+                                     \-> BankJobCompletionDecider
 ```
 
 ### Trazabilidad general
@@ -218,7 +231,7 @@ AnnualStatementReportWriter
 
 ### Orquestacion
 
-`JobLauncherRunner` ejecuta los Jobs en este orden:
+`JobLauncherRunner` ejecuta los Jobs en este orden, usando un `run.id` unico para permitir reejecuciones:
 
 ```text
 dailyTransactionsJob
@@ -229,6 +242,21 @@ monthlyInterestJob
     v
 annualStatementsJob
 ```
+
+Cada Job ejecuta su Step principal y luego pasa por `BankJobCompletionDecider`:
+
+```text
+Job -> Step -> BankJobCompletionDecider -> estado operativo
+```
+
+Los estados operativos son:
+
+- `COMPLETED`: el Step termino sin skips tecnicos.
+- `COMPLETED_WITH_SKIPS`: el Step termino con skips tecnicos bajo el umbral de revision.
+- `REVIEW_REQUIRED`: los skips tecnicos alcanzan o superan `batch.review-skip-threshold`.
+- `FAILED`: el Step termina con estado fallido.
+
+En los datos actuales de Semana 2, las filas invalidas de negocio son procesadas por los `ItemProcessor`, se registran en `rejected_records` y retornan `null`; por eso aparecen como `filtrados` en Spring Batch, no como `skips`. Los `skips` quedan reservados para errores tecnicos controlados durante lectura, procesamiento o escritura.
 
 ## Reglas de consistencia
 
@@ -244,6 +272,26 @@ annualStatementsJob
 Los rechazos se guardan en `rejected_records` con proceso, clave, motivo y payload original para auditoria.
 
 Ademas, los errores omitidos por Spring Batch en etapas de lectura, procesamiento o escritura son registrados por `BankSkipListener` en la misma tabla para mantener una trazabilidad centralizada.
+
+## Politica de finalizacion y reejecucion
+
+La aplicacion separa tres conceptos:
+
+- **Registros filtrados:** rechazos de negocio detectados por los processors. Se guardan en `rejected_records` y el item retorna `null`.
+- **Skips tecnicos:** errores controlados por Spring Batch mediante `.faultTolerant()`, `BankRecordSkipPolicy` y `BankSkipListener`.
+- **Decision operativa:** clasificacion final del Job calculada por `BankJobCompletionDecider`.
+
+La configuracion relevante es:
+
+```properties
+batch.skip-limit=10
+batch.retry-limit=2
+batch.review-skip-threshold=3
+```
+
+Con esta configuracion, Spring Batch intenta reintentar fallas transitorias de base de datos hasta 2 veces. Si un Step acumula skips tecnicos bajo el umbral, el Job puede cerrar como `COMPLETED_WITH_SKIPS`. Si alcanza 3 o mas skips tecnicos, el Job cierra como `REVIEW_REQUIRED` para dejar trazable que los datos deben revisarse antes del cierre operativo.
+
+Cada ejecucion usa un parametro `run.id`, por lo que el mismo Job puede volver a ejecutarse sin chocar con una instancia anterior. Las salidas principales usan `ON CONFLICT` para actualizar registros ya existentes cuando corresponde; los rechazos quedan auditados en `rejected_records`.
 
 ## Ejemplos de validacion y manejo de errores
 
@@ -350,3 +398,5 @@ Los procesadores principales tienen pruebas unitarias para reglas de negocio y r
 ```bash
 ./mvnw test
 ```
+
+La prueba automatizada tambien cubre el `BankJobCompletionDecider`, validando los escenarios `COMPLETED`, `COMPLETED_WITH_SKIPS` y `REVIEW_REQUIRED`.

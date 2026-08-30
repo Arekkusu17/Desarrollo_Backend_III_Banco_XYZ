@@ -21,40 +21,74 @@ public class JobExecutionSummaryListener implements JobExecutionListener {
     private final int chunkSize;
     private final int threadPoolSize;
     private final int skipLimit;
+    private final int retryLimit;
+    private final int reviewSkipThreshold;
 
     public JobExecutionSummaryListener(JdbcTemplate jdbcTemplate,
                                        @Value("${legacy.data.week}") String dataWeek,
                                        @Value("${batch.chunk-size}") int chunkSize,
                                        @Value("${batch.thread-pool-size}") int threadPoolSize,
-                                       @Value("${batch.skip-limit}") int skipLimit) {
+                                       @Value("${batch.skip-limit}") int skipLimit,
+                                       @Value("${batch.retry-limit}") int retryLimit,
+                                       @Value("${batch.review-skip-threshold}") int reviewSkipThreshold) {
         this.jdbcTemplate = jdbcTemplate;
         this.dataWeek = dataWeek;
         this.chunkSize = chunkSize;
         this.threadPoolSize = threadPoolSize;
         this.skipLimit = skipLimit;
+        this.retryLimit = retryLimit;
+        this.reviewSkipThreshold = reviewSkipThreshold;
     }
 
     @Override
     public void afterJob(JobExecution jobExecution) {
         log.info("========== Resumen de ejecucion: {} ==========", jobExecution.getJobInstance().getJobName());
         log.info("Estado final: {}", jobExecution.getStatus());
-        log.info("Configuracion batch activa: dataWeek={} | chunkSize={} | threadPoolSize={} | skipLimit={}",
+        log.info("Configuracion batch activa: dataWeek={} | chunkSize={} | threadPoolSize={} | skipLimit={} | retryLimit={} | reviewSkipThreshold={}",
                 dataWeek,
                 chunkSize,
                 threadPoolSize,
-                skipLimit);
+                skipLimit,
+                retryLimit,
+                reviewSkipThreshold);
 
         for (StepExecution stepExecution : jobExecution.getStepExecutions()) {
-            log.info("Step {} | leidos={} | escritos={} | filtrados={} | commits={}",
+            log.info("Step {} | leidos={} | escritos={} | filtrados={} | skips={} (read={}, process={}, write={}) | commits={} | rollbacks={}",
                     stepExecution.getStepName(),
                     stepExecution.getReadCount(),
                     stepExecution.getWriteCount(),
                     stepExecution.getFilterCount(),
-                    stepExecution.getCommitCount());
+                    stepExecution.getSkipCount(),
+                    stepExecution.getReadSkipCount(),
+                    stepExecution.getProcessSkipCount(),
+                    stepExecution.getWriteSkipCount(),
+                    stepExecution.getCommitCount(),
+                    stepExecution.getRollbackCount());
         }
 
         log.info("Salida persistida: {}", outputSummary(jobExecution.getJobInstance().getJobName()));
         log.info("Rechazos de esta ejecucion: {}", rejectedCount(jobExecution));
+        log.info("Decision operativa: {}", decisionSummary(jobExecution));
+    }
+
+    private String decisionSummary(JobExecution jobExecution) {
+        long totalSkips = jobExecution.getStepExecutions().stream()
+                .mapToLong(StepExecution::getSkipCount)
+                .sum();
+
+        if (jobExecution.getStatus().isUnsuccessful()) {
+            return "FAILED - revisar errores del Step antes de reejecutar";
+        }
+
+        if (totalSkips >= reviewSkipThreshold) {
+            return "REVIEW_REQUIRED - derivar registros rechazados a revision antes de cerrar operativamente";
+        }
+
+        if (totalSkips > 0) {
+            return "COMPLETED_WITH_SKIPS - continuar, con rechazos auditados en rejected_records";
+        }
+
+        return "COMPLETED - cierre limpio sin registros omitidos";
     }
 
     private String outputSummary(String jobName) {
