@@ -139,17 +139,39 @@ annualStatementsWorkerStep:annualPartition2
 
 ## Evidencias
 
-Las evidencias de ejecucion se encuentran en `screenshots/`:
+Las evidencias de ejecucion se encuentran en `screenshots/`.
 
-- `console_output.png`
-- `db_results.png`
-- `output_csv.png`
+### Ambiente limpio
 
-El reporte anual se genera en:
+![Docker limpio](screenshots/docker_clean_start.png)
 
-```text
-output/annual_statement_report.csv
-```
+### Ejecucion batch Semana 3
+
+![Ejecucion batch](screenshots/batch_run_log.png)
+
+### Metadata de Spring Batch
+
+![Metadata Spring Batch](screenshots/batch_step_metadata.png)
+
+### Conteos finales
+
+![Conteos finales](screenshots/db_counts.png)
+
+### Datos procesados
+
+![Transacciones diarias](screenshots/daily_transaction_summary.png)
+
+![Intereses mensuales](screenshots/monthly_interest_results.png)
+
+![Estados de cuenta anuales](screenshots/annual_statement_entries.png)
+
+### Rechazos auditados
+
+![Resumen de rechazos](screenshots/rejected_records_summary.png)
+
+![Muestra de rechazos](screenshots/rejected_records_sample.png)
+
+El reporte anual se genera en `output/annual_statement_report.csv`.
 
 ## Estructura
 
