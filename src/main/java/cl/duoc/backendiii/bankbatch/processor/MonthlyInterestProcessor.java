@@ -3,32 +3,38 @@ package cl.duoc.backendiii.bankbatch.processor;
 import cl.duoc.backendiii.bankbatch.domain.LegacyInterestAccount;
 import cl.duoc.backendiii.bankbatch.domain.MonthlyInterestResult;
 import cl.duoc.backendiii.bankbatch.domain.RejectedRecord;
+import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.batch.item.ItemProcessor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 @Component
+@StepScope
 // This processor is responsible for calculating monthly interest for LegacyInterestAccount objects and transforming them into MonthlyInterestResult objects.
 public class MonthlyInterestProcessor implements ItemProcessor<LegacyInterestAccount, MonthlyInterestResult> {
 
-    private static final Map<String, BigDecimal> MONTHLY_RATES = Map.of(
-            // Define monthly interest rates for different account types
-            // As the original code does not provide these values, we will assume 
-            // some example rates for demonstration purposes.
-            "ahorro", new BigDecimal("0.0050"),
-            "prestamo", new BigDecimal("0.0180")
-    );
-
     private final RejectedRecordWriter rejectedRecordWriter;
+    private final Map<String, BigDecimal> monthlyRates;
+    private final int minAge;
+    private final int maxAge;
     private final Set<Long> processedAccounts = ConcurrentHashMap.newKeySet();
 
-    public MonthlyInterestProcessor(RejectedRecordWriter rejectedRecordWriter) {
+    public MonthlyInterestProcessor(RejectedRecordWriter rejectedRecordWriter,
+                                    @Value("${bank.interest.monthly-rates}") String monthlyRates,
+                                    @Value("${bank.interest.min-age}") int minAge,
+                                    @Value("${bank.interest.max-age}") int maxAge) {
         this.rejectedRecordWriter = rejectedRecordWriter;
+        this.monthlyRates = parseRateMap(monthlyRates);
+        this.minAge = minAge;
+        this.maxAge = maxAge;
     }
 
     @Override
@@ -45,11 +51,11 @@ public class MonthlyInterestProcessor implements ItemProcessor<LegacyInterestAcc
                 reject(item.accountId(), "cuenta duplicada", item);
                 return null;
             }
-            if (!MONTHLY_RATES.containsKey(accountType)) {
+            if (!monthlyRates.containsKey(accountType)) {
                 reject(item.accountId(), "tipo de cuenta no soportado: " + accountType, item);
                 return null;
             }
-            if (age < 18 || age > 100) {
+            if (age < minAge || age > maxAge) {
                 reject(item.accountId(), "edad fuera de rango", item);
                 return null;
             }
@@ -58,7 +64,7 @@ public class MonthlyInterestProcessor implements ItemProcessor<LegacyInterestAcc
                 return null;
             }
 
-            BigDecimal rate = MONTHLY_RATES.get(accountType);
+            BigDecimal rate = monthlyRates.get(accountType);
             BigDecimal interest = balance.multiply(rate).setScale(2, RoundingMode.HALF_UP);
             BigDecimal finalBalance = accountType.equals("prestamo")
                     ? balance.add(interest).setScale(2, RoundingMode.HALF_UP)
@@ -77,5 +83,15 @@ public class MonthlyInterestProcessor implements ItemProcessor<LegacyInterestAcc
                 String.valueOf(key),
                 reason,
                 item.toString()));
+    }
+
+    private Map<String, BigDecimal> parseRateMap(String values) {
+        return Arrays.stream(values.split(","))
+                .map(String::trim)
+                .filter(value -> !value.isEmpty())
+                .map(value -> value.split(":", 2))
+                .collect(Collectors.toUnmodifiableMap(
+                        parts -> parts[0].trim().toLowerCase(),
+                        parts -> new BigDecimal(parts[1].trim())));
     }
 }
