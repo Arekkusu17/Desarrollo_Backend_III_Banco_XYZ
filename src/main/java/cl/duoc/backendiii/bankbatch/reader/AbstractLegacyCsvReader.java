@@ -20,16 +20,26 @@ public abstract class AbstractLegacyCsvReader<T> implements ItemReader<T> {
 
     private final List<String> lines;
     private final int expectedFields;
-    private int currentIndex = 0;
+    private final int endIndexInclusive;
+    private int currentIndex;
 
     protected AbstractLegacyCsvReader(String resourcePath, int expectedFields) throws IOException {
+        this(resourcePath, expectedFields, 0, null);
+    }
+
+    protected AbstractLegacyCsvReader(String resourcePath, int expectedFields, int startIndex, Integer endIndexInclusive) throws IOException {
         this.lines = loadLines(resourcePath);
         this.expectedFields = expectedFields;
+        this.currentIndex = Math.max(startIndex, 0);
+        int lastAvailableIndex = Math.max(lines.size() - 1, -1);
+        this.endIndexInclusive = endIndexInclusive == null
+                ? lastAvailableIndex
+                : Math.min(endIndexInclusive, lastAvailableIndex);
     }
 
     @Override
     public synchronized T read() {
-        if (currentIndex >= lines.size()) {
+        if (currentIndex > endIndexInclusive || currentIndex >= lines.size()) {
             return null;
         }
 

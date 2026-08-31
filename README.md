@@ -1,12 +1,12 @@
 # Banco XYZ Batch
 
-Solucion Semana 2 de Desarrollo Backend III para modernizar tres procesos legacy del Banco XYZ con Spring Batch:
+Solucion Semana 3 de Desarrollo Backend III para modernizar tres procesos legacy del Banco XYZ con Spring Batch:
 
 - Reporte de transacciones diarias.
 - Calculo de intereses mensuales.
 - Generacion de estados de cuenta anuales.
 
-La implementacion aplica procesamiento por chunks, tolerancia a fallos personalizada, registro de rechazos y escalamiento con 3 hilos de ejecucion paralela.
+La implementacion aplica procesamiento por chunks, tolerancia a fallos personalizada, registro de rechazos, ejecucion paralela con 3 hilos y particionamiento manager/worker para el proceso anual.
 Tambien incorpora una decision operativa al cierre de cada Job para distinguir ejecuciones limpias, ejecuciones con omisiones controladas y casos que requieren revision.
 
 ## Base de datos 
@@ -32,7 +32,7 @@ Si no tienes Maven Wrapper generado, usa:
 mvn spring-boot:run
 ```
 
-Por defecto se procesan los CSV de `src/main/resources/input/semana_2`. Para cambiar semana:
+Por defecto se procesan los CSV de `src/main/resources/input/semana_3`. Para cambiar semana:
 
 ```bash
 mvn spring-boot:run -Dspring-boot.run.arguments="--legacy.data.week=semana_1"
@@ -41,9 +41,10 @@ mvn spring-boot:run -Dspring-boot.run.arguments="--legacy.data.week=semana_1"
 Parametros batch principales:
 
 ```properties
-legacy.data.week=semana_2
+legacy.data.week=semana_3
 batch.chunk-size=5
 batch.thread-pool-size=3
+batch.partition-grid-size=3
 batch.skip-limit=10
 batch.retry-limit=2
 batch.review-skip-threshold=3
@@ -95,12 +96,27 @@ docker exec banco-xyz-postgres psql -U banco -d banco_xyz -c "SELECT process_nam
 
 La consola tambien imprime un resumen por cada Job con registros leidos, escritos, filtrados, skips tecnicos, commits, rollbacks, tabla de salida, rechazos de esa ejecucion y decision operativa final. Ese resumen permite trazar rapidamente que se leyo, que se transformo, que quedo persistido y si el resultado puede cerrarse o debe revisarse.
 
-## Caracteristicas Semana 2
+## Propuesta tecnica Semana 3
+
+El sistema reescribe tres procesos legacy del Banco XYZ con Spring Batch, manteniendo cada flujo como un Job independiente para separar responsabilidades operativas y facilitar la trazabilidad.
+
+La estrategia de escalamiento combina dos enfoques:
+
+- **Multithreading por chunks** en transacciones diarias e intereses mensuales, porque son procesos acotados por periodo diario o mensual.
+- **Particionamiento manager/worker** en estados de cuenta anuales, porque en un escenario bancario real este archivo concentra la mayor volumetria al consolidar movimientos historicos de todo el año por cuenta.
+
+El proceso anual se divide en rangos de lineas mediante `AnnualStatementPartitioner`. Cada particion recibe `start` y `end` en el `ExecutionContext`, y `annualStatementsWorkerStep` procesa solo ese segmento del CSV. La ejecucion paralela de particiones queda a cargo de `TaskExecutorPartitionHandler`, usando `batch.partition-grid-size` para la cantidad de particiones y `batch.thread-pool-size` para los workers disponibles.
+
+Esta decision permite reducir tiempos de procesamiento en el flujo anual, aislar mejor el trabajo por rangos y conservar las mismas reglas de validacion, tolerancia a fallos, retry y auditoria de rechazos usadas en el resto del proyecto.
+
+## Caracteristicas Semana 3
 
 - **Tres Jobs independientes:** `dailyTransactionsJob`, `monthlyInterestJob` y `annualStatementsJob`.
 - **Chunks de tamano 5:** configurados mediante `batch.chunk-size=5`.
-- **Escalamiento con 3 hilos:** `ThreadPoolTaskExecutor` usa `batch.thread-pool-size=3` y se aplica a los tres Steps.
-- **Lectura segura en paralelo:** los CSV se leen con readers propios en memoria que implementan `ItemReader` y usan `synchronized read()`, siguiendo el enfoque del proyecto de referencia de Semana 2.
+- **Escalamiento con 3 hilos:** `ThreadPoolTaskExecutor` usa `batch.thread-pool-size=3`.
+- **Particionamiento anual:** `annualStatementsJob` ejecuta `annualStatementsPartitionStep`, que divide `cuentas_anuales.csv` en rangos y lanza workers en paralelo.
+- **ExecutionContext:** cada worker anual recibe `start`, `end` y `partitionName` para procesar solo su parte del archivo.
+- **Lectura segura en paralelo:** los CSV se leen con readers propios en memoria que implementan `ItemReader`; el reader anual tambien soporta rangos para particionamiento.
 - **Tolerancia a fallos:** cada Step usa `.faultTolerant()` con `BankRecordSkipPolicy`.
 - **Politica personalizada:** `BankRecordSkipPolicy` permite omitir errores controlados de lectura/formato dentro de un limite configurable.
 - **Retry configurable:** los reintentos ante `TransientDataAccessException` usan `batch.retry-limit`, por lo que el limite no queda fijo en el codigo.
@@ -136,7 +152,7 @@ La aplicacion ejecuta tres Jobs independientes. Cada Job tiene un Step principal
 CSV legacy -> ItemReader -> ItemProcessor -> ItemWriter -> salida final
 ```
 
-Cada Step se ejecuta con chunks de 5 registros y un pool de 3 hilos:
+Los procesos diario y mensual se ejecutan con chunks de 5 registros y un pool de 3 hilos:
 
 ```text
 CSV legacy -> ItemReader sincronizado en memoria -> ItemProcessor -> ItemWriter
@@ -148,11 +164,11 @@ CSV legacy -> ItemReader sincronizado en memoria -> ItemProcessor -> ItemWriter
 
 ### Trazabilidad general
 
-| Job | Entrada CSV | Reader | Processor | Writer | Salida persistida |
+| Job | Entrada CSV | Estrategia | Processor | Writer | Salida persistida |
 | --- | --- | --- | --- | --- | --- |
-| `dailyTransactionsJob` | `input/{semana}/transacciones.csv` | `transactionReader` | `DailyTransactionProcessor` | `transactionWriter` | `daily_transaction_summary` |
-| `monthlyInterestJob` | `input/{semana}/intereses.csv` | `interestReader` | `MonthlyInterestProcessor` | `interestWriter` | `monthly_interest_results` |
-| `annualStatementsJob` | `input/{semana}/cuentas_anuales.csv` | `annualReader` | `AnnualStatementProcessor` | `AnnualStatementReportWriter` | `annual_statement_entries` y `output/annual_statement_report.csv` |
+| `dailyTransactionsJob` | `input/{semana}/transacciones.csv` | Chunk multithread | `DailyTransactionProcessor` | `transactionWriter` | `daily_transaction_summary` |
+| `monthlyInterestJob` | `input/{semana}/intereses.csv` | Chunk multithread | `MonthlyInterestProcessor` | `interestWriter` | `monthly_interest_results` |
+| `annualStatementsJob` | `input/{semana}/cuentas_anuales.csv` | Particiones manager/worker | `AnnualStatementProcessor` | `AnnualStatementReportWriter` | `annual_statement_entries` y `output/annual_statement_report.csv` |
 
 ### Job 1: Reporte de Transacciones Diarias
 
@@ -209,7 +225,19 @@ monthly_interest_results
 src/main/resources/input/{semana}/cuentas_anuales.csv
     |
     v
-annualReader
+AnnualStatementPartitioner
+    |-- annualPartition0: start/end
+    |-- annualPartition1: start/end
+    |-- annualPartition2: start/end
+    |
+    v
+TaskExecutorPartitionHandler
+    |
+    v
+annualStatementsWorkerStep
+    |
+    v
+annualReader por rango
     |
     v
 AnnualStatementProcessor
@@ -241,9 +269,15 @@ monthlyInterestJob
     |
     v
 annualStatementsJob
+    |
+    v
+annualStatementsPartitionStep
+    |
+    v
+annualStatementsWorkerStep por particion
 ```
 
-Cada Job ejecuta su Step principal y luego pasa por `BankJobCompletionDecider`:
+Cada Job ejecuta su Step principal o Step particionado y luego pasa por `BankJobCompletionDecider`:
 
 ```text
 Job -> Step -> BankJobCompletionDecider -> estado operativo
@@ -256,7 +290,7 @@ Los estados operativos son:
 - `REVIEW_REQUIRED`: los skips tecnicos alcanzan o superan `batch.review-skip-threshold`.
 - `FAILED`: el Step termina con estado fallido.
 
-En los datos actuales de Semana 2, las filas invalidas de negocio son procesadas por los `ItemProcessor`, se registran en `rejected_records` y retornan `null`; por eso aparecen como `filtrados` en Spring Batch, no como `skips`. Los `skips` quedan reservados para errores tecnicos controlados durante lectura, procesamiento o escritura.
+En los datos actuales de Semana 3, las filas invalidas de negocio son procesadas por los `ItemProcessor`, se registran en `rejected_records` y retornan `null`; por eso aparecen como `filtrados` en Spring Batch, no como `skips`. Los `skips` quedan reservados para errores tecnicos controlados durante lectura, procesamiento o escritura.
 
 ## Reglas de consistencia
 
@@ -287,6 +321,7 @@ La configuracion relevante es:
 batch.skip-limit=10
 batch.retry-limit=2
 batch.review-skip-threshold=3
+batch.partition-grid-size=3
 ```
 
 Con esta configuracion, Spring Batch intenta reintentar fallas transitorias de base de datos hasta 2 veces. Si un Step acumula skips tecnicos bajo el umbral, el Job puede cerrar como `COMPLETED_WITH_SKIPS`. Si alcanza 3 o mas skips tecnicos, el Job cierra como `REVIEW_REQUIRED` para dejar trazable que los datos deben revisarse antes del cierre operativo.

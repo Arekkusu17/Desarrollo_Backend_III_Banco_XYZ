@@ -26,22 +26,35 @@ public class BankRecordSkipPolicy implements SkipPolicy {
 
     @Override
     public boolean shouldSkip(Throwable throwable, long skipCount) throws SkipLimitExceededException {
-        // Controlled errors:
-        // - malformed CSV lines,
-        // - validations represented as IllegalArgumentException,
-        // - recoverable IO errors within the configured limit.
-        boolean controlledError = throwable instanceof FlatFileParseException
-                || throwable instanceof IllegalArgumentException
-                || throwable instanceof IOException;
+        String errorType = controlledErrorType(throwable);
+        boolean controlledError = errorType != null;
         boolean insideLimit = skipCount < skipLimit;
 
         if (controlledError && insideLimit) {
-            log.warn("Record skipped by custom policy. Current skips: {}. Reason: {}",
+            log.warn("Record skipped by custom policy. Type: {}. Current skips: {}. Reason: {}",
+                    errorType,
                     skipCount,
                     throwable.getMessage());
             return true;
         }
 
         return false;
+    }
+
+    private String controlledErrorType(Throwable throwable) {
+        // Controlled errors:
+        // - malformed CSV lines,
+        // - validations represented as IllegalArgumentException,
+        // - recoverable IO errors within the configured limit.
+        if (throwable instanceof FlatFileParseException) {
+            return "CSV_FORMAT";
+        }
+        if (throwable instanceof IllegalArgumentException) {
+            return "VALIDATION";
+        }
+        if (throwable instanceof IOException) {
+            return "IO";
+        }
+        return null;
     }
 }
