@@ -5,9 +5,11 @@ import cl.duoc.backendiii.bankbatch.processor.RejectedRecordWriter;
 import org.springframework.batch.core.SkipListener;
 import org.springframework.batch.core.StepExecution;
 import org.springframework.batch.core.annotation.BeforeStep;
+import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.stereotype.Component;
 
 @Component
+@StepScope
 // Skip listener for fault-tolerant Steps.
 // It complements the business rejections already registered by the processors.
 // This listener covers errors skipped by Spring Batch during read, process, or write stages.

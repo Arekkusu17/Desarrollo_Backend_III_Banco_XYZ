@@ -3,27 +3,37 @@ package cl.duoc.backendiii.bankbatch.processor;
 import cl.duoc.backendiii.bankbatch.domain.AnnualStatementEntry;
 import cl.duoc.backendiii.bankbatch.domain.LegacyAnnualEntry;
 import cl.duoc.backendiii.bankbatch.domain.RejectedRecord;
+import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.batch.item.ItemProcessor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Arrays;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 @Component
+@StepScope
 // This processor is responsible for transforming LegacyAnnualEntry objects into AnnualStatementEntry objects.
 public class AnnualStatementProcessor implements ItemProcessor<LegacyAnnualEntry, AnnualStatementEntry> {
 
-    // As the original code does not provide the valid transaction types, we will assume "deposito", 
-    // "retiro", "compra", and "pago" as valid types for demonstration purposes.
-    private static final Set<String> VALID_TYPES = Set.of("deposito", "retiro", "compra", "pago");
-
     private final RejectedRecordWriter rejectedRecordWriter;
+    private final Set<String> validTypes;
+    private final String negativeAmountAuditFlag;
+    private final String defaultAuditFlag;
     private final Set<String> processedKeys = ConcurrentHashMap.newKeySet();
 
-    public AnnualStatementProcessor(RejectedRecordWriter rejectedRecordWriter) {
+    public AnnualStatementProcessor(RejectedRecordWriter rejectedRecordWriter,
+                                    @Value("${bank.annual.valid-transaction-types}") String validTypes,
+                                    @Value("${bank.annual.negative-amount-audit-flag}") String negativeAmountAuditFlag,
+                                    @Value("${bank.annual.default-audit-flag}") String defaultAuditFlag) {
         this.rejectedRecordWriter = rejectedRecordWriter;
+        this.validTypes = parseCsvSet(validTypes);
+        this.negativeAmountAuditFlag = negativeAmountAuditFlag;
+        this.defaultAuditFlag = defaultAuditFlag;
     }
 
     @Override
@@ -41,7 +51,7 @@ public class AnnualStatementProcessor implements ItemProcessor<LegacyAnnualEntry
                 reject(item.accountId(), "movimiento anual duplicado", item);
                 return null;
             }
-            if (!VALID_TYPES.contains(transactionType)) {
+            if (!validTypes.contains(transactionType)) {
                 reject(item.accountId(), "tipo de movimiento anual invalido: " + transactionType, item);
                 return null;
             }
@@ -50,7 +60,7 @@ public class AnnualStatementProcessor implements ItemProcessor<LegacyAnnualEntry
                 return null;
             }
 
-            String auditFlag = amount.compareTo(BigDecimal.ZERO) < 0 ? "REVISION_EGRESO" : "OK";
+            String auditFlag = amount.compareTo(BigDecimal.ZERO) < 0 ? negativeAmountAuditFlag : defaultAuditFlag;
             return new AnnualStatementEntry(accountId, date, transactionType, amount, description, auditFlag);
         } catch (RuntimeException ex) {
             reject(item.accountId(), ex.getMessage(), item);
@@ -65,5 +75,13 @@ public class AnnualStatementProcessor implements ItemProcessor<LegacyAnnualEntry
                 String.valueOf(key),
                 reason,
                 item.toString()));
+    }
+
+    private Set<String> parseCsvSet(String values) {
+        return Arrays.stream(values.split(","))
+                .map(String::trim)
+                .map(String::toLowerCase)
+                .filter(value -> !value.isEmpty())
+                .collect(Collectors.toUnmodifiableSet());
     }
 }

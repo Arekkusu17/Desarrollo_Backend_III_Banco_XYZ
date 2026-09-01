@@ -23,6 +23,7 @@ public class JobExecutionSummaryListener implements JobExecutionListener {
     private final int skipLimit;
     private final int retryLimit;
     private final int reviewSkipThreshold;
+    private final int partitionGridSize;
 
     public JobExecutionSummaryListener(JdbcTemplate jdbcTemplate,
                                        @Value("${legacy.data.week}") String dataWeek,
@@ -30,7 +31,8 @@ public class JobExecutionSummaryListener implements JobExecutionListener {
                                        @Value("${batch.thread-pool-size}") int threadPoolSize,
                                        @Value("${batch.skip-limit}") int skipLimit,
                                        @Value("${batch.retry-limit}") int retryLimit,
-                                       @Value("${batch.review-skip-threshold}") int reviewSkipThreshold) {
+                                       @Value("${batch.review-skip-threshold}") int reviewSkipThreshold,
+                                       @Value("${batch.partition-grid-size}") int partitionGridSize) {
         this.jdbcTemplate = jdbcTemplate;
         this.dataWeek = dataWeek;
         this.chunkSize = chunkSize;
@@ -38,16 +40,18 @@ public class JobExecutionSummaryListener implements JobExecutionListener {
         this.skipLimit = skipLimit;
         this.retryLimit = retryLimit;
         this.reviewSkipThreshold = reviewSkipThreshold;
+        this.partitionGridSize = partitionGridSize;
     }
 
     @Override
     public void afterJob(JobExecution jobExecution) {
         log.info("========== Resumen de ejecucion: {} ==========", jobExecution.getJobInstance().getJobName());
         log.info("Estado final: {}", jobExecution.getStatus());
-        log.info("Configuracion batch activa: dataWeek={} | chunkSize={} | threadPoolSize={} | skipLimit={} | retryLimit={} | reviewSkipThreshold={}",
+        log.info("Configuracion batch activa: dataWeek={} | chunkSize={} | threadPoolSize={} | partitionGridSize={} | skipLimit={} | retryLimit={} | reviewSkipThreshold={}",
                 dataWeek,
                 chunkSize,
                 threadPoolSize,
+                partitionGridSize,
                 skipLimit,
                 retryLimit,
                 reviewSkipThreshold);

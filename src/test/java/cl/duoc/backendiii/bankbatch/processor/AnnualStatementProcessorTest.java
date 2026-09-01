@@ -11,11 +11,30 @@ class AnnualStatementProcessorTest {
 
     @Test
     void flagsWithdrawalsForAuditReview() {
-        AnnualStatementProcessor processor = new AnnualStatementProcessor(mock(RejectedRecordWriter.class));
+        AnnualStatementProcessor processor = new AnnualStatementProcessor(
+                mock(RejectedRecordWriter.class),
+                "deposito,retiro,compra,pago",
+                "REVISION_EGRESO",
+                "OK");
 
         AnnualStatementEntry result = processor.process(new LegacyAnnualEntry("101", "2024/03/15", "retiro", "-500", "Retiro parcial"));
 
         assertThat(result).isNotNull();
         assertThat(result.auditFlag()).isEqualTo("REVISION_EGRESO");
+    }
+
+    @Test
+    void usesConfiguredAuditFlagsAndTransactionTypes() {
+        AnnualStatementProcessor processor = new AnnualStatementProcessor(
+                mock(RejectedRecordWriter.class),
+                "ajuste",
+                "CONTROL_EGRESO",
+                "SIN_OBSERVACION");
+
+        AnnualStatementEntry result = processor.process(new LegacyAnnualEntry("101", "2024/03/15", "ajuste", "-500", "Ajuste manual"));
+
+        assertThat(result).isNotNull();
+        assertThat(result.transactionType()).isEqualTo("ajuste");
+        assertThat(result.auditFlag()).isEqualTo("CONTROL_EGRESO");
     }
 }

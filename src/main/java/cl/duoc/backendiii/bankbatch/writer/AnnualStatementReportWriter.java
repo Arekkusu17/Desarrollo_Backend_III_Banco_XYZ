@@ -3,6 +3,7 @@ package cl.duoc.backendiii.bankbatch.writer;
 import cl.duoc.backendiii.bankbatch.domain.AnnualStatementEntry;
 import org.springframework.batch.item.Chunk;
 import org.springframework.batch.item.ItemWriter;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -18,9 +19,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 // This writer is responsible for writing AnnualStatementEntry objects to both a CSV report and a database table.
 public class AnnualStatementReportWriter implements ItemWriter<AnnualStatementEntry> {
 
-    private static final Path REPORT_PATH = Path.of("output", "annual_statement_report.csv");
-
     private final JdbcTemplate jdbcTemplate;
+    private final Path reportPath;
     private final AtomicBoolean initialized = new AtomicBoolean(false);
     // The annual Step runs with a TaskExecutor, so multiple worker threads can call this writer at the same time.
     // PostgreSQL writes are handled safely by JdbcTemplate and the database transaction, but appending to a plain CSV
@@ -28,8 +28,10 @@ public class AnnualStatementReportWriter implements ItemWriter<AnnualStatementEn
     // preventing interleaved lines or a header being written while another thread is appending data.
     private final Object reportLock = new Object();
 
-    public AnnualStatementReportWriter(JdbcTemplate jdbcTemplate) {
+    public AnnualStatementReportWriter(JdbcTemplate jdbcTemplate,
+                                       @Value("${bank.annual.report-output}") String reportOutput) {
         this.jdbcTemplate = jdbcTemplate;
+        this.reportPath = Path.of(reportOutput);
     }
 
     @Override
@@ -69,7 +71,7 @@ public class AnnualStatementReportWriter implements ItemWriter<AnnualStatementEn
                     .append(item.auditFlag()).append(System.lineSeparator());
         }
         synchronized (reportLock) {
-            Files.writeString(REPORT_PATH, lines.toString(), StandardCharsets.UTF_8, StandardOpenOption.APPEND);
+            Files.writeString(reportPath, lines.toString(), StandardCharsets.UTF_8, StandardOpenOption.APPEND);
         }
     }
 
@@ -79,8 +81,11 @@ public class AnnualStatementReportWriter implements ItemWriter<AnnualStatementEn
         // and every other thread waits until the header is ready before appending its chunk.
         synchronized (reportLock) {
             if (initialized.compareAndSet(false, true)) {
-                Files.createDirectories(REPORT_PATH.getParent());
-                Files.writeString(REPORT_PATH,
+                Path parent = reportPath.getParent();
+                if (parent != null) {
+                    Files.createDirectories(parent);
+                }
+                Files.writeString(reportPath,
                         "account_id,transaction_date,transaction_type,amount,description,audit_flag" + System.lineSeparator(),
                         StandardCharsets.UTF_8,
                         StandardOpenOption.CREATE,

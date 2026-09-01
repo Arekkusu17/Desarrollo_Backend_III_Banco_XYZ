@@ -7,6 +7,7 @@ import cl.duoc.backendiii.bankbatch.domain.LegacyInterestAccount;
 import cl.duoc.backendiii.bankbatch.domain.LegacyTransaction;
 import cl.duoc.backendiii.bankbatch.domain.MonthlyInterestResult;
 import cl.duoc.backendiii.bankbatch.listener.BankSkipListener;
+import cl.duoc.backendiii.bankbatch.partition.AnnualStatementPartitioner;
 import cl.duoc.backendiii.bankbatch.policy.BankRecordSkipPolicy;
 import cl.duoc.backendiii.bankbatch.processor.AnnualStatementProcessor;
 import cl.duoc.backendiii.bankbatch.processor.DailyTransactionProcessor;
@@ -19,6 +20,7 @@ import org.springframework.batch.core.Job;
 import org.springframework.batch.core.Step;
 import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.batch.core.job.builder.JobBuilder;
+import org.springframework.batch.core.partition.support.TaskExecutorPartitionHandler;
 import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.batch.core.step.builder.StepBuilder;
 import org.springframework.batch.item.ItemReader;
@@ -60,11 +62,16 @@ public class BatchConfiguration {
     }
 
     @Bean
-    // This reader loads annual movements used to generate account statements.
-    // It uses the same in-memory synchronized reader pattern as the other Week 2 readers.
+    // This reader loads only the annual movement range assigned to the current partition.
+    // start/end are zero-based data-row indexes provided through the partition ExecutionContext.
     @StepScope
-    public LegacyAnnualEntryCsvReader annualReader(@Value("${legacy.data.week}") String dataWeek) throws IOException {
-        return new LegacyAnnualEntryCsvReader("input/" + dataWeek + "/cuentas_anuales.csv");
+    public LegacyAnnualEntryCsvReader annualReader(@Value("${legacy.data.week}") String dataWeek,
+                                                   @Value("#{stepExecutionContext['start']}") Integer start,
+                                                   @Value("#{stepExecutionContext['end']}") Integer end) throws IOException {
+        return new LegacyAnnualEntryCsvReader(
+                "input/" + dataWeek + "/cuentas_anuales.csv",
+                start == null ? 0 : start,
+                end);
     }
 
     @Bean
@@ -202,23 +209,22 @@ public class BatchConfiguration {
     }
 
     @Bean
-    // The annualStatementsStep bean defines a step in the batch job that processes annual statements.
+    // The annualStatementsWorkerStep bean processes one partition of the annual statements file.
     // It reads legacy annual entry data from a CSV file, processes it using the AnnualStatementProcessor, 
     // and writes the results to a report using the AnnualStatementReportWriter.
     // Flow: cuentas_anuales.csv -> annualReader -> AnnualStatementProcessor
     //       -> AnnualStatementReportWriter -> annual_statement_entries + annual_statement_report.csv.
-    // Uses the same fault-tolerance and scaling policy used by the other Steps.
-    public Step annualStatementsStep(JobRepository jobRepository,
-                                     PlatformTransactionManager transactionManager,
-                                     ItemReader<LegacyAnnualEntry> annualReader,
-                                     AnnualStatementProcessor processor,
-                                     AnnualStatementReportWriter annualStatementReportWriter,
-                                     BankRecordSkipPolicy bankRecordSkipPolicy,
-                                     BankSkipListener bankSkipListener,
-                                     TaskExecutor batchTaskExecutor,
-                                     @Value("${batch.chunk-size}") int chunkSize,
-                                     @Value("${batch.retry-limit}") int retryLimit) {
-        return new StepBuilder("annualStatementsStep", jobRepository)
+    // Parallel execution is controlled by the partition handler, so the worker Step itself stays single-threaded.
+    public Step annualStatementsWorkerStep(JobRepository jobRepository,
+                                           PlatformTransactionManager transactionManager,
+                                           ItemReader<LegacyAnnualEntry> annualReader,
+                                           AnnualStatementProcessor processor,
+                                           AnnualStatementReportWriter annualStatementReportWriter,
+                                           BankRecordSkipPolicy bankRecordSkipPolicy,
+                                           BankSkipListener bankSkipListener,
+                                           @Value("${batch.chunk-size}") int chunkSize,
+                                           @Value("${batch.retry-limit}") int retryLimit) {
+        return new StepBuilder("annualStatementsWorkerStep", jobRepository)
                 .<LegacyAnnualEntry, AnnualStatementEntry>chunk(chunkSize, transactionManager)
                 .reader(annualReader)
                 .processor(processor)
@@ -231,8 +237,28 @@ public class BatchConfiguration {
                 .skipPolicy(bankRecordSkipPolicy)
                 // Registers batch skips for later audit.
                 .listener(bankSkipListener)
-                // Processes annual chunks in parallel using BankBatch-* threads.
-                .taskExecutor(batchTaskExecutor)
+                .build();
+    }
+
+    @Bean
+    public TaskExecutorPartitionHandler annualStatementsPartitionHandler(Step annualStatementsWorkerStep,
+                                                                         TaskExecutor batchTaskExecutor,
+                                                                         @Value("${batch.partition-grid-size}") int gridSize) {
+        TaskExecutorPartitionHandler handler = new TaskExecutorPartitionHandler();
+        handler.setStep(annualStatementsWorkerStep);
+        handler.setTaskExecutor(batchTaskExecutor);
+        handler.setGridSize(gridSize);
+        return handler;
+    }
+
+    @Bean
+    // Manager Step for Semana 3 scaling: splits the annual file into independent ranges.
+    public Step annualStatementsPartitionStep(JobRepository jobRepository,
+                                              AnnualStatementPartitioner annualStatementPartitioner,
+                                              TaskExecutorPartitionHandler annualStatementsPartitionHandler) {
+        return new StepBuilder("annualStatementsPartitionStep", jobRepository)
+                .partitioner("annualStatementsWorkerStep", annualStatementPartitioner)
+                .partitionHandler(annualStatementsPartitionHandler)
                 .build();
     }
 
@@ -277,16 +303,16 @@ public class BatchConfiguration {
     }
 
     @Bean
-    // The annualStatementsJob bean defines a batch job that consists of the annualStatementsStep.
+    // The annualStatementsJob bean defines a partitioned batch job for the annual high-volume process.
     // It orchestrates the execution of the step and manages the job lifecycle.
-    // Job flow: annualStatementsJob -> annualStatementsStep.
+    // Job flow: annualStatementsJob -> annualStatementsPartitionStep -> annualStatementsWorkerStep partitions.
     public Job annualStatementsJob(JobRepository jobRepository,
-                                   Step annualStatementsStep,
+                                   Step annualStatementsPartitionStep,
                                    JobExecutionSummaryListener jobExecutionSummaryListener,
                                    BankJobCompletionDecider bankJobCompletionDecider) {
         return new JobBuilder("annualStatementsJob", jobRepository)
                 .listener(jobExecutionSummaryListener)
-                .start(annualStatementsStep)
+                .start(annualStatementsPartitionStep)
                 .next(bankJobCompletionDecider)
                 .on(BankJobCompletionDecider.REVIEW_REQUIRED).end(BankJobCompletionDecider.REVIEW_REQUIRED)
                 .from(bankJobCompletionDecider).on(BankJobCompletionDecider.COMPLETED_WITH_SKIPS).end(BankJobCompletionDecider.COMPLETED_WITH_SKIPS)

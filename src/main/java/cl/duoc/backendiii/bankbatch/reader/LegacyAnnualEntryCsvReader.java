@@ -12,6 +12,10 @@ public class LegacyAnnualEntryCsvReader extends AbstractLegacyCsvReader<LegacyAn
         super(resourcePath, 5);
     }
 
+    public LegacyAnnualEntryCsvReader(String resourcePath, int startIndex, Integer endIndexInclusive) throws IOException {
+        super(resourcePath, 5, startIndex, endIndexInclusive);
+    }
+
     @Override
     protected LegacyAnnualEntry map(String[] fields) {
         return new LegacyAnnualEntry(fields[0], fields[1], fields[2], fields[3], fields[4]);
