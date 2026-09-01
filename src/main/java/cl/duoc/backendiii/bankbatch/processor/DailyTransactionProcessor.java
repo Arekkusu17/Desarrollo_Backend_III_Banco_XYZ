@@ -4,28 +4,33 @@ import cl.duoc.backendiii.bankbatch.domain.DailyTransactionSummary;
 import cl.duoc.backendiii.bankbatch.domain.LegacyTransaction;
 import cl.duoc.backendiii.bankbatch.domain.RejectedRecord;
 import org.springframework.batch.item.ItemProcessor;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Arrays;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 @Component
+@StepScope
 // This processor is responsible for transforming LegacyTransaction objects into DailyTransactionSummary objects.
 public class DailyTransactionProcessor implements ItemProcessor<LegacyTransaction, DailyTransactionSummary> {
 
-    private static final BigDecimal ANOMALY_LIMIT = new BigDecimal("2500");
-
-    // As the original code does not provide the valid transaction types, we will assume "debito" and "credito" as 
-    // valid types for demonstration purposes.
-    private static final Set<String> VALID_TYPES = Set.of("debito", "credito");
-
     private final RejectedRecordWriter rejectedRecordWriter;
+    private final BigDecimal anomalyLimit;
+    private final Set<String> validTypes;
     private final Set<String> processedKeys = ConcurrentHashMap.newKeySet();
 
-    public DailyTransactionProcessor(RejectedRecordWriter rejectedRecordWriter) {
+    public DailyTransactionProcessor(RejectedRecordWriter rejectedRecordWriter,
+                                     @Value("${bank.transaction.anomaly-limit}") BigDecimal anomalyLimit,
+                                     @Value("${bank.transaction.valid-types}") String validTypes) {
         this.rejectedRecordWriter = rejectedRecordWriter;
+        this.anomalyLimit = anomalyLimit;
+        this.validTypes = parseCsvSet(validTypes);
     }
 
     @Override
@@ -42,7 +47,7 @@ public class DailyTransactionProcessor implements ItemProcessor<LegacyTransactio
                 reject(item.id(), "transaccion diaria duplicada", item);
                 return null;
             }
-            if (!VALID_TYPES.contains(type)) {
+            if (!validTypes.contains(type)) {
                 reject(item.id(), "tipo de transaccion invalido: " + type, item);
                 return null;
             }
@@ -51,7 +56,7 @@ public class DailyTransactionProcessor implements ItemProcessor<LegacyTransactio
                 return null;
             }
 
-            boolean anomaly = amount.compareTo(ANOMALY_LIMIT) > 0;
+            boolean anomaly = amount.compareTo(anomalyLimit) > 0;
             String reason = anomaly ? "monto sobre limite diario" : "";
             return new DailyTransactionSummary(id, date, amount, type, anomaly, reason);
         } catch (RuntimeException ex) {
@@ -66,5 +71,13 @@ public class DailyTransactionProcessor implements ItemProcessor<LegacyTransactio
                 String.valueOf(key),
                 reason,
                 item.toString()));
+    }
+
+    private Set<String> parseCsvSet(String values) {
+        return Arrays.stream(values.split(","))
+                .map(String::trim)
+                .map(String::toLowerCase)
+                .filter(value -> !value.isEmpty())
+                .collect(Collectors.toUnmodifiableSet());
     }
 }
