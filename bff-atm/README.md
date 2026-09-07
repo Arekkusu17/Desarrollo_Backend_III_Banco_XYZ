@@ -1,6 +1,14 @@
 # BFF ATM
 
-Servicio planificado para cajeros automaticos.
+Servicio para cajeros automaticos.
 
-Consumira `core-banking` y expondra operaciones acotadas como consulta de saldo y retiros.
+Consume `core-banking` y expone operaciones acotadas como consulta de saldo y retiros.
 
+## Endpoints
+
+```bash
+curl http://localhost:8083/atm/cuentas/101/saldo
+curl -X POST http://localhost:8083/atm/cuentas/101/retiros \
+  -H "Content-Type: application/json" \
+  -d '{"amount":1000,"pin":"1234"}'
+```

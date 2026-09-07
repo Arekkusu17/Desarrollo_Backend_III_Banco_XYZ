@@ -29,5 +29,35 @@ services:
       postgres:
         condition: service_healthy
 
+  bff-web:
+    build: ./bff-web
+    container_name: banco-xyz-bff-web
+    environment:
+      CORE_BANKING_URL: http://core-banking:8080
+    ports:
+      - "8081:8081"
+    depends_on:
+      - core-banking
+
+  bff-mobile:
+    build: ./bff-mobile
+    container_name: banco-xyz-bff-mobile
+    environment:
+      CORE_BANKING_URL: http://core-banking:8080
+    ports:
+      - "8082:8082"
+    depends_on:
+      - core-banking
+
+  bff-atm:
+    build: ./bff-atm
+    container_name: banco-xyz-bff-atm
+    environment:
+      CORE_BANKING_URL: http://core-banking:8080
+    ports:
+      - "8083:8083"
+    depends_on:
+      - core-banking
+
 volumes:
   banco_xyz_data:
