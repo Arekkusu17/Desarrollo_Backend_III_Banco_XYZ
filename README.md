@@ -81,6 +81,8 @@ docker compose up -d
 ./mvnw spring-boot:run
 ```
 
+Al iniciar, la aplicacion ejecuta los procesos batch y deja disponible la API REST del core bancario en `http://localhost:8080`.
+
 Para procesar otra semana:
 
 ```bash
@@ -107,6 +109,21 @@ Ejecutar pruebas automatizadas:
 ```bash
 ./mvnw test
 ```
+
+Consultar la API REST del core bancario:
+
+```bash
+curl http://localhost:8080/api/estado
+curl http://localhost:8080/api/cuentas
+curl http://localhost:8080/api/cuentas/101
+curl http://localhost:8080/api/cuentas/101/resumen
+curl http://localhost:8080/api/cuentas/101/saldo
+curl "http://localhost:8080/api/cuentas/101/movimientos?limit=5"
+curl "http://localhost:8080/api/transacciones?onlyAnomalies=true&limit=5"
+curl "http://localhost:8080/api/rechazos?limit=5"
+```
+
+Estos endpoints forman el core bancario que consumiran los BFF Web, Mobile y ATM.
 
 Consultar resultados en PostgreSQL:
 
