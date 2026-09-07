@@ -1,12 +1,13 @@
-package cl.duoc.backendiii.bankbatch.api;
+package cl.duoc.backendiii.bankbatch.controller;
 
-import cl.duoc.backendiii.bankbatch.api.dto.AccountBalanceResponse;
-import cl.duoc.backendiii.bankbatch.api.dto.AccountMovementResponse;
-import cl.duoc.backendiii.bankbatch.api.dto.AccountSummaryResponse;
-import cl.duoc.backendiii.bankbatch.api.dto.CoreAccountOverviewResponse;
-import cl.duoc.backendiii.bankbatch.api.dto.CoreStatusResponse;
-import cl.duoc.backendiii.bankbatch.api.dto.DailyTransactionResponse;
-import cl.duoc.backendiii.bankbatch.api.dto.RejectedRecordResponse;
+import cl.duoc.backendiii.bankbatch.model.AccountBalanceResponse;
+import cl.duoc.backendiii.bankbatch.model.AccountMovementResponse;
+import cl.duoc.backendiii.bankbatch.model.AccountSummaryResponse;
+import cl.duoc.backendiii.bankbatch.model.CoreAccountOverviewResponse;
+import cl.duoc.backendiii.bankbatch.model.CoreStatusResponse;
+import cl.duoc.backendiii.bankbatch.model.DailyTransactionResponse;
+import cl.duoc.backendiii.bankbatch.model.RejectedRecordResponse;
+import cl.duoc.backendiii.bankbatch.service.BankCoreService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -69,4 +70,3 @@ public class BankCoreController {
         return service.rejectedRecords(limit);
     }
 }
-

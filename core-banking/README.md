@@ -213,11 +213,14 @@ El reporte anual se genera en `output/annual_statement_report.csv`.
 ```text
 core-banking/src/main/java/cl/duoc/backendiii/bankbatch
 |-- config       Jobs, Steps, runner y resumen de ejecucion
+|-- controller   Endpoints REST del core bancario
 |-- domain       Modelos de entrada y salida
 |-- listener     Registro de skips tecnicos
+|-- model        Contratos de respuesta para la API REST
 |-- partition    Particionamiento del proceso anual
 |-- policy       Politica personalizada de skip
 |-- processor    Validaciones y transformaciones
 |-- reader       Lectura CSV
+|-- service      Casos de uso y consultas JDBC del core bancario
 |-- writer       Escritura de reporte anual
 ```
