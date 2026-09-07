@@ -37,4 +37,21 @@ class AnnualStatementProcessorTest {
         assertThat(result.transactionType()).isEqualTo("ajuste");
         assertThat(result.auditFlag()).isEqualTo("CONTROL_EGRESO");
     }
+
+    @Test
+    void acceptsDayFirstDateFormatsFromLegacyFiles() {
+        AnnualStatementProcessor processor = new AnnualStatementProcessor(
+                mock(RejectedRecordWriter.class),
+                "deposito,retiro,compra,pago",
+                "REVISION_EGRESO",
+                "OK");
+
+        AnnualStatementEntry dashDate = processor.process(new LegacyAnnualEntry("101", "08-03-2024", "deposito", "3000", "Ingreso"));
+        AnnualStatementEntry slashDate = processor.process(new LegacyAnnualEntry("102", "24/03/2024", "deposito", "1000", "Ingreso"));
+
+        assertThat(dashDate).isNotNull();
+        assertThat(dashDate.transactionDate()).hasToString("2024-03-08");
+        assertThat(slashDate).isNotNull();
+        assertThat(slashDate.transactionDate()).hasToString("2024-03-24");
+    }
 }

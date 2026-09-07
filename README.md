@@ -91,10 +91,10 @@ Para procesar otra semana:
 
 El sistema valida:
 
-- Fechas con formato `yyyy-MM-dd` o `yyyy/MM/dd`.
+- Fechas con formato `yyyy-MM-dd`, `yyyy/MM/dd`, `dd-MM-yyyy` o `dd/MM/yyyy`.
 - Montos nulos, cero o negativos segun regla del proceso.
 - Tipos validos de transaccion, cuenta y movimiento.
-- Duplicados por clave natural.
+- Duplicados por clave natural. En transacciones diarias la clave incluye el identificador para no descartar movimientos distintos que coincidan en fecha, monto y tipo.
 - Edades fuera del rango configurado.
 - Egresos anuales, marcados con flag de auditoria.
 
@@ -136,6 +136,24 @@ annualStatementsWorkerStep:annualPartition0
 annualStatementsWorkerStep:annualPartition1
 annualStatementsWorkerStep:annualPartition2
 ```
+
+## Comparacion de rendimiento
+
+La configuracion de escalamiento se puede comparar sin cambiar codigo, usando argumentos de Spring Boot:
+
+```bash
+./mvnw spring-boot:run -Dspring-boot.run.arguments="--batch.chunk-size=5 --batch.thread-pool-size=3 --batch.partition-grid-size=3"
+./mvnw spring-boot:run -Dspring-boot.run.arguments="--batch.chunk-size=3 --batch.thread-pool-size=3 --batch.partition-grid-size=3"
+./mvnw spring-boot:run -Dspring-boot.run.arguments="--batch.chunk-size=10 --batch.thread-pool-size=4 --batch.partition-grid-size=4"
+```
+
+Tambien se incluye un script para registrar la comparacion en CSV:
+
+```bash
+./scripts/run-performance-comparison.sh
+```
+
+El resultado queda en `output/performance-comparison.csv` con escenario, parametros usados y duracion total. La configuracion recomendada para la entrega es `chunk-size=5`, `thread-pool-size=3` y `partition-grid-size=3`, porque mantiene paralelismo visible sin sobrecargar la base local.
 
 ## Evidencias
 
