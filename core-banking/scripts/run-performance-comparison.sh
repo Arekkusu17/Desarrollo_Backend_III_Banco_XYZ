@@ -3,6 +3,8 @@ set -euo pipefail
 
 OUTPUT_DIR="output"
 RESULTS_FILE="${OUTPUT_DIR}/performance-comparison.csv"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 mkdir -p "${OUTPUT_DIR}"
 printf 'scenario,chunk_size,thread_pool_size,partition_grid_size,duration_seconds\n' > "${RESULTS_FILE}"
@@ -18,7 +20,7 @@ run_scenario() {
   local duration
 
   start=$(date +%s)
-  ./mvnw -q spring-boot:run \
+  "${REPO_ROOT}/mvnw" -q -pl core-banking spring-boot:run \
     -Dspring-boot.run.arguments="--batch.chunk-size=${chunk_size} --batch.thread-pool-size=${thread_pool_size} --batch.partition-grid-size=${partition_grid_size}"
   end=$(date +%s)
   duration=$((end - start))
