@@ -1,4 +1,4 @@
-package cl.duoc.backendiii.bankbatch.api.dto;
+package cl.duoc.backendiii.bankbatch.model;
 
 import java.util.List;
 
