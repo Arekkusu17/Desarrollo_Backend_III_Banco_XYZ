@@ -41,7 +41,7 @@ public class DailyTransactionProcessor implements ItemProcessor<LegacyTransactio
             LocalDate date = LegacyParsing.parseDate(item.date());
             BigDecimal amount = LegacyParsing.parseMoney(item.amount(), "monto vacio");
             String type = LegacyParsing.requireText(item.type(), "tipo vacio").toLowerCase();
-            String key = date + "|" + amount + "|" + type;
+            String key = id + "|" + date + "|" + amount + "|" + type;
 
             if (!processedKeys.add(key)) {
                 reject(item.id(), "transaccion diaria duplicada", item);

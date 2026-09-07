@@ -48,6 +48,30 @@ class DailyTransactionProcessorTest {
         assertThat(result.transactionType()).isEqualTo("transferencia");
     }
 
+    @Test
+    void acceptsDayFirstDateFormatsFromLegacyFiles() {
+        DailyTransactionProcessor processor = newProcessor(mock(RejectedRecordWriter.class));
+
+        DailyTransactionSummary dashDate = processor.process(new LegacyTransaction("20", "03-04-2024", "900", "credito"));
+        DailyTransactionSummary slashDate = processor.process(new LegacyTransaction("21", "20/07/2024", "900", "debito"));
+
+        assertThat(dashDate).isNotNull();
+        assertThat(dashDate.transactionDate()).hasToString("2024-04-03");
+        assertThat(slashDate).isNotNull();
+        assertThat(slashDate.transactionDate()).hasToString("2024-07-20");
+    }
+
+    @Test
+    void doesNotRejectDifferentIdsWithSameDateAmountAndTypeAsDuplicates() {
+        DailyTransactionProcessor processor = newProcessor(mock(RejectedRecordWriter.class));
+
+        DailyTransactionSummary first = processor.process(new LegacyTransaction("30", "2024-01-07", "900", "credito"));
+        DailyTransactionSummary second = processor.process(new LegacyTransaction("31", "2024-01-07", "900", "credito"));
+
+        assertThat(first).isNotNull();
+        assertThat(second).isNotNull();
+    }
+
     private DailyTransactionProcessor newProcessor(RejectedRecordWriter rejectedRecordWriter) {
         return new DailyTransactionProcessor(rejectedRecordWriter, new BigDecimal("2500"), "debito,credito");
     }
