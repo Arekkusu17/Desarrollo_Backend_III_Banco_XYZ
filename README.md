@@ -34,9 +34,9 @@ Desarrollo_Backend_III_Banco_XYZ/
 ## Servicios
 
 - `core-banking`: procesa los archivos CSV legacy, persiste resultados limpios y expone APIs REST internas para los BFF.
-- `bff-web`: entregara respuestas completas para interfaces web.
-- `bff-mobile`: entregara respuestas reducidas para mejorar velocidad y consumo de datos.
-- `bff-atm`: entregara operaciones acotadas y seguras para cajeros automaticos.
+- `bff-web`: entrega respuestas completas para interfaces web.
+- `bff-mobile`: entrega respuestas reducidas para mejorar velocidad y consumo de datos.
+- `bff-atm`: entrega operaciones acotadas y seguras para cajeros automaticos.
 
 ## Ejecucion actual
 
@@ -50,6 +50,14 @@ Ejecutar el core bancario:
 
 ```bash
 ./mvnw -pl core-banking spring-boot:run
+```
+
+Ejecutar cada BFF en una terminal distinta:
+
+```bash
+./mvnw -pl bff-web spring-boot:run
+./mvnw -pl bff-mobile spring-boot:run
+./mvnw -pl bff-atm spring-boot:run
 ```
 
 Ejecutar pruebas:
@@ -71,3 +79,25 @@ curl "http://localhost:8080/api/transacciones?onlyAnomalies=true&limit=5"
 curl "http://localhost:8080/api/rechazos?limit=5"
 ```
 
+## APIs BFF
+
+BFF Web:
+
+```bash
+curl http://localhost:8081/web/cuentas/101/dashboard
+```
+
+BFF Mobile:
+
+```bash
+curl http://localhost:8082/mobile/cuentas/101/inicio
+```
+
+BFF ATM:
+
+```bash
+curl http://localhost:8083/atm/cuentas/101/saldo
+curl -X POST http://localhost:8083/atm/cuentas/101/retiros \
+  -H "Content-Type: application/json" \
+  -d '{"amount":1000,"pin":"1234"}'
+```

@@ -1,6 +1,11 @@
 # BFF Mobile
 
-Servicio planificado para entregar un contrato liviano para app movil.
+Servicio para entregar un contrato liviano para app movil.
 
-Consumira `core-banking` y expondra endpoints reducidos, pensados para velocidad y bajo consumo de datos.
+Consume `core-banking` y expone endpoints reducidos, pensados para velocidad y bajo consumo de datos.
 
+## Endpoint
+
+```bash
+curl http://localhost:8082/mobile/cuentas/101/inicio
+```
