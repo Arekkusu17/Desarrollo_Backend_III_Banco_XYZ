@@ -16,5 +16,18 @@ services:
       timeout: 5s
       retries: 10
 
+  core-banking:
+    build: ./core-banking
+    container_name: banco-xyz-core-banking
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/banco_xyz
+      SPRING_DATASOURCE_USERNAME: banco
+      SPRING_DATASOURCE_PASSWORD: banco
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   banco_xyz_data:
