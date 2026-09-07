@@ -81,23 +81,44 @@ curl "http://localhost:8080/api/rechazos?limit=5"
 
 ## APIs BFF
 
+## Autenticacion y autorizacion por canal
+
+Cada BFF valida el header `X-Channel-Token` antes de atender sus rutas. Se usa un token distinto por canal para representar que Web, Mobile y ATM son clientes diferentes y no comparten exactamente el mismo contrato de acceso.
+
+Esta solucion es intencionalmente simple para el alcance academico del proyecto: permite evidenciar autenticacion y autorizacion especificas por canal sin agregar la complejidad completa de OAuth2 o JWT. En un escenario productivo, estos tokens deberian reemplazarse por un proveedor de identidad, expiracion de credenciales, scopes por canal y auditoria centralizada.
+
+Los tokens locales por defecto son:
+
+```text
+WEB-SECRET
+MOBILE-SECRET
+ATM-SECRET
+```
+
+ATM ademas solicita `pin` en el retiro porque ese canal ejecuta operaciones criticas. Web y Mobile solo consultan vistas adaptadas por el BFF.
+
 BFF Web:
 
 ```bash
-curl http://localhost:8081/web/cuentas/101/dashboard
+curl http://localhost:8081/web/cuentas/101/dashboard \
+  -H "X-Channel-Token: WEB-SECRET"
 ```
 
 BFF Mobile:
 
 ```bash
-curl http://localhost:8082/mobile/cuentas/101/inicio
+curl http://localhost:8082/mobile/cuentas/101/inicio \
+  -H "X-Channel-Token: MOBILE-SECRET"
 ```
 
 BFF ATM:
 
 ```bash
-curl http://localhost:8083/atm/cuentas/101/saldo
+curl http://localhost:8083/atm/cuentas/101/saldo \
+  -H "X-Channel-Token: ATM-SECRET"
+
 curl -X POST http://localhost:8083/atm/cuentas/101/retiros \
   -H "Content-Type: application/json" \
+  -H "X-Channel-Token: ATM-SECRET" \
   -d '{"amount":1000,"pin":"1234"}'
 ```
