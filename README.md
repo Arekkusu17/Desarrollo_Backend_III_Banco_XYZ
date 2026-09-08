@@ -66,6 +66,10 @@ Ejecutar pruebas:
 ./mvnw test
 ```
 
+## Postman
+
+La coleccion `postman/Banco_XYZ_Semana_4.postman_collection.json` contiene validaciones para el core bancario y para los tres BFF. Incluye casos autorizados con `X-Channel-Token` y casos sin token para comprobar el rechazo `401` por canal.
+
 ## API del core bancario
 
 ```bash
