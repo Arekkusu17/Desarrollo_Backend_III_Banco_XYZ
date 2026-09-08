@@ -1,0 +1,260 @@
+{
+  "info": {
+    "name": "Banco XYZ - Semana 4",
+    "description": "Validaciones para core-banking y BFF por canal. Cada BFF exige X-Channel-Token para representar autenticacion/autorizacion especifica del canal.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "coreUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "webUrl",
+      "value": "http://localhost:8081"
+    },
+    {
+      "key": "mobileUrl",
+      "value": "http://localhost:8082"
+    },
+    {
+      "key": "atmUrl",
+      "value": "http://localhost:8083"
+    },
+    {
+      "key": "accountId",
+      "value": "101"
+    },
+    {
+      "key": "webToken",
+      "value": "WEB-SECRET"
+    },
+    {
+      "key": "mobileToken",
+      "value": "MOBILE-SECRET"
+    },
+    {
+      "key": "atmToken",
+      "value": "ATM-SECRET"
+    }
+  ],
+  "item": [
+    {
+      "name": "Core Banking",
+      "item": [
+        {
+          "name": "Estado del core",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{coreUrl}}/api/estado",
+              "host": [
+                "{{coreUrl}}"
+              ],
+              "path": [
+                "api",
+                "estado"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Resumen de cuenta",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{coreUrl}}/api/cuentas/{{accountId}}/resumen",
+              "host": [
+                "{{coreUrl}}"
+              ],
+              "path": [
+                "api",
+                "cuentas",
+                "{{accountId}}",
+                "resumen"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "BFF Web",
+      "item": [
+        {
+          "name": "Dashboard Web - autorizado",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Channel-Token",
+                "value": "{{webToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{webUrl}}/web/cuentas/{{accountId}}/dashboard",
+              "host": [
+                "{{webUrl}}"
+              ],
+              "path": [
+                "web",
+                "cuentas",
+                "{{accountId}}",
+                "dashboard"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Dashboard Web - sin token debe rechazar",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{webUrl}}/web/cuentas/{{accountId}}/dashboard",
+              "host": [
+                "{{webUrl}}"
+              ],
+              "path": [
+                "web",
+                "cuentas",
+                "{{accountId}}",
+                "dashboard"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "BFF Mobile",
+      "item": [
+        {
+          "name": "Inicio Mobile - autorizado",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Channel-Token",
+                "value": "{{mobileToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{mobileUrl}}/mobile/cuentas/{{accountId}}/inicio",
+              "host": [
+                "{{mobileUrl}}"
+              ],
+              "path": [
+                "mobile",
+                "cuentas",
+                "{{accountId}}",
+                "inicio"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Inicio Mobile - sin token debe rechazar",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{mobileUrl}}/mobile/cuentas/{{accountId}}/inicio",
+              "host": [
+                "{{mobileUrl}}"
+              ],
+              "path": [
+                "mobile",
+                "cuentas",
+                "{{accountId}}",
+                "inicio"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "BFF ATM",
+      "item": [
+        {
+          "name": "Saldo ATM - autorizado",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Channel-Token",
+                "value": "{{atmToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{atmUrl}}/atm/cuentas/{{accountId}}/saldo",
+              "host": [
+                "{{atmUrl}}"
+              ],
+              "path": [
+                "atm",
+                "cuentas",
+                "{{accountId}}",
+                "saldo"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Saldo ATM - sin token debe rechazar",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{atmUrl}}/atm/cuentas/{{accountId}}/saldo",
+              "host": [
+                "{{atmUrl}}"
+              ],
+              "path": [
+                "atm",
+                "cuentas",
+                "{{accountId}}",
+                "saldo"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Retiro ATM - autorizado",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Channel-Token",
+                "value": "{{atmToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 1000,\n  \"pin\": \"1234\"\n}"
+            },
+            "url": {
+              "raw": "{{atmUrl}}/atm/cuentas/{{accountId}}/retiros",
+              "host": [
+                "{{atmUrl}}"
+              ],
+              "path": [
+                "atm",
+                "cuentas",
+                "{{accountId}}",
+                "retiros"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
