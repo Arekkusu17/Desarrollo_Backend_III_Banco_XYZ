@@ -16,5 +16,51 @@ services:
       timeout: 5s
       retries: 10
 
+  core-banking:
+    build: ./core-banking
+    container_name: banco-xyz-core-banking
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/banco_xyz
+      SPRING_DATASOURCE_USERNAME: banco
+      SPRING_DATASOURCE_PASSWORD: banco
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  bff-web:
+    build: ./bff-web
+    container_name: banco-xyz-bff-web
+    environment:
+      CORE_BANKING_URL: http://core-banking:8080
+      WEB_CHANNEL_TOKEN: WEB-SECRET
+    ports:
+      - "8081:8081"
+    depends_on:
+      - core-banking
+
+  bff-mobile:
+    build: ./bff-mobile
+    container_name: banco-xyz-bff-mobile
+    environment:
+      CORE_BANKING_URL: http://core-banking:8080
+      MOBILE_CHANNEL_TOKEN: MOBILE-SECRET
+    ports:
+      - "8082:8082"
+    depends_on:
+      - core-banking
+
+  bff-atm:
+    build: ./bff-atm
+    container_name: banco-xyz-bff-atm
+    environment:
+      CORE_BANKING_URL: http://core-banking:8080
+      ATM_CHANNEL_TOKEN: ATM-SECRET
+    ports:
+      - "8083:8083"
+    depends_on:
+      - core-banking
+
 volumes:
   banco_xyz_data:

@@ -1,206 +1,233 @@
-# Banco XYZ Batch
+# Banco XYZ BFF
 
-Solucion sumativa de **Semana 3 - Desarrollo Backend III** para modernizar procesos legacy del Banco XYZ con Spring Batch.
+Proyecto formativo de Semana 4 para implementar el patron **Backend for Frontend (BFF)** sobre el backend bancario construido en la continuidad del proyecto Banco XYZ.
 
-El proyecto procesa archivos CSV, valida datos inconsistentes, persiste resultados en PostgreSQL, registra rechazos auditables y aplica escalamiento mediante multithreading y particiones.
+El sistema expone un backend central con los datos procesados desde archivos legacy y tres BFF independientes, cada uno adaptado a las necesidades de un canal: web, movil y cajero automatico.
 
-## Procesos
+## Objetivo
 
-| Job | Entrada | Estrategia | Salida |
-| --- | --- | --- | --- |
-| `dailyTransactionsJob` | `transacciones.csv` | Chunks multithread | `daily_transaction_summary` |
-| `monthlyInterestJob` | `intereses.csv` | Chunks multithread | `monthly_interest_results` |
-| `annualStatementsJob` | `cuentas_anuales.csv` | Particiones manager/worker | `annual_statement_entries` y `output/annual_statement_report.csv` |
+Implementar una arquitectura BFF que optimice la comunicacion entre distintos clientes del Banco XYZ y el backend central. Cada canal recibe solo la informacion y las operaciones que necesita, reduciendo acoplamiento, payloads innecesarios y reglas duplicadas en los frontends.
 
-## Propuesta Tecnica
+## Estrategia BFF
 
-Cada proceso se implementa como un Job independiente para separar responsabilidades y facilitar trazabilidad.
+La estrategia seleccionada es **un BFF por canal**. Esta decision permite separar contratos, respuestas y validaciones segun el tipo de cliente.
 
-Para transacciones diarias e intereses mensuales se usa procesamiento por chunks con `TaskExecutor`, ya que son procesos acotados a ventanas diaria y mensual. Para estados de cuenta anuales se usa particionamiento porque, en un escenario bancario real, el archivo anual concentra mayor volumetria al consolidar movimientos historicos por cuenta.
+| Canal | BFF | Proposito |
+| --- | --- | --- |
+| Web | `bff-web` | Entregar una vista completa para navegadores, con saldo, datos de cuenta, movimientos y alertas operativas. |
+| Mobile | `bff-mobile` | Entregar una respuesta liviana con datos esenciales, optimizada para menor consumo y carga rapida. |
+| Cajero automatico | `bff-atm` | Entregar operaciones acotadas y seguras para consulta de saldo y retiro simulado. |
 
-El flujo anual usa:
+## Arquitectura
 
-- `AnnualStatementPartitioner` para dividir `cuentas_anuales.csv` en rangos.
-- `ExecutionContext` para entregar `start`, `end` y `partitionName` a cada worker.
-- `annualStatementsWorkerStep` para procesar cada particion.
-- `TaskExecutorPartitionHandler` para ejecutar workers en paralelo.
+![Arquitectura BFF Banco XYZ](evidencias/00-arquitectura-bff.png)
 
-La tolerancia a fallos se concentra en `BankRecordSkipPolicy`, `BankSkipListener` y `BankJobCompletionDecider`. Los registros invalidos de negocio se guardan en `rejected_records`; los errores tecnicos controlados se tratan con `faultTolerant`, `skipPolicy` y `retry`.
+## Estructura del proyecto
 
-## Configuracion
-
-La mayor parte del comportamiento se puede ajustar en `src/main/resources/application.properties` sin recompilar:
-
-```properties
-legacy.data.week=semana_3
-
-batch.chunk-size=5
-batch.thread-pool-size=3
-batch.partition-grid-size=3
-batch.skip-limit=10
-batch.retry-limit=2
-batch.review-skip-threshold=3
-
-bank.transaction.anomaly-limit=2500
-bank.transaction.valid-types=debito,credito
-
-bank.interest.monthly-rates=ahorro:0.0050,prestamo:0.0180
-bank.interest.min-age=18
-bank.interest.max-age=100
-
-bank.annual.valid-transaction-types=deposito,retiro,compra,pago
-bank.annual.negative-amount-audit-flag=REVISION_EGRESO
-bank.annual.default-audit-flag=OK
-bank.annual.report-output=output/annual_statement_report.csv
-
-bank.rejected.process-name-limit=80
-bank.rejected.record-key-limit=120
-bank.rejected.reason-limit=255
+```text
+Desarrollo_Backend_III_Banco_XYZ/
+|-- core-banking/    Backend central con Spring Batch, PostgreSQL y API REST
+|-- bff-web/         BFF para banca web
+|-- bff-mobile/      BFF para app movil
+|-- bff-atm/         BFF para cajeros automaticos
+|-- postman/         Coleccion de prueba de APIs
+|-- evidencias/      Capturas de ejecucion para la entrega
+|-- docker-compose.yml
+|-- pom.xml
 ```
 
-La base de datos usa PostgreSQL:
+Cada modulo BFF mantiene el patron de carpetas usado en clase:
 
-```properties
-spring.datasource.url=jdbc:postgresql://localhost:5432/banco_xyz
-spring.datasource.username=banco
-spring.datasource.password=banco
+```text
+controller/
+model/
+service/
+client/
+config/
 ```
+
+En `core-banking` tambien existen paquetes propios del procesamiento batch, como `reader`, `processor`, `writer`, `partition`, `policy` y `listener`.
+
+## Componentes
+
+- `core-banking`: procesa los archivos CSV legacy, persiste resultados en PostgreSQL y expone APIs REST internas.
+- `bff-web`: consume el core y arma un dashboard completo para banca web.
+- `bff-mobile`: consume el core y arma una vista compacta para aplicacion movil.
+- `bff-atm`: consume el core y expone operaciones limitadas para cajeros automaticos.
+
+## Requisitos
+
+- Java 17 o superior.
+- Docker y Docker Compose.
+- Maven Wrapper incluido en el proyecto.
+- Postman para ejecutar la coleccion de validacion.
 
 ## Ejecucion
 
-Requisitos:
-
-- Java 17 o superior.
-- Docker Desktop o Docker Compose.
-- Puerto local `5432` disponible.
-
-Levantar PostgreSQL y ejecutar:
+Levantar PostgreSQL:
 
 ```bash
-docker compose up -d
-./mvnw spring-boot:run
+docker compose up -d postgres
 ```
 
-Para procesar otra semana:
+Ejecutar el core bancario:
 
 ```bash
-./mvnw spring-boot:run -Dspring-boot.run.arguments="--legacy.data.week=semana_1"
+./mvnw -pl core-banking spring-boot:run
 ```
 
-## Validaciones
+Ejecutar cada BFF en una terminal distinta:
 
-El sistema valida:
+```bash
+./mvnw -pl bff-web spring-boot:run
+```
 
-- Fechas con formato `yyyy-MM-dd`, `yyyy/MM/dd`, `dd-MM-yyyy` o `dd/MM/yyyy`.
-- Montos nulos, cero o negativos segun regla del proceso.
-- Tipos validos de transaccion, cuenta y movimiento.
-- Duplicados por clave natural. En transacciones diarias la clave incluye el identificador para no descartar movimientos distintos que coincidan en fecha, monto y tipo.
-- Edades fuera del rango configurado.
-- Egresos anuales, marcados con flag de auditoria.
+```bash
+./mvnw -pl bff-mobile spring-boot:run
+```
 
-Los rechazos se almacenan en `rejected_records` con proceso, clave, motivo y payload original.
+```bash
+./mvnw -pl bff-atm spring-boot:run
+```
 
-## Verificacion
+Puertos utilizados:
 
-Ejecutar pruebas automatizadas:
+| Servicio | URL |
+| --- | --- |
+| Core Banking | `http://localhost:8080` |
+| BFF Web | `http://localhost:8081` |
+| BFF Mobile | `http://localhost:8082` |
+| BFF ATM | `http://localhost:8083` |
+
+## Pruebas
+
+Ejecutar la suite completa:
 
 ```bash
 ./mvnw test
 ```
 
-Consultar resultados en PostgreSQL:
-
-```bash
-docker exec -it banco-xyz-postgres psql -U banco -d banco_xyz
-```
-
-```sql
-SELECT COUNT(*) FROM daily_transaction_summary;
-SELECT COUNT(*) FROM monthly_interest_results;
-SELECT COUNT(*) FROM annual_statement_entries;
-SELECT COUNT(*) FROM rejected_records;
-```
-
-La consola muestra el resumen de cada Job. En el proceso anual deben verse las particiones:
+La coleccion Postman esta disponible en:
 
 ```text
-Creada annualPartition0 -> start=0, end=333, totalRecords=1000
-Creada annualPartition1 -> start=334, end=667, totalRecords=1000
-Creada annualPartition2 -> start=668, end=999, totalRecords=1000
+postman/Banco_XYZ_Semana_4.postman_collection.json
 ```
 
-Y los workers paralelos:
+La coleccion contiene pruebas para el core bancario y los tres BFF. Incluye casos autorizados con `X-Channel-Token` y casos sin token para comprobar el rechazo `401` por canal.
 
-```text
-annualStatementsWorkerStep:annualPartition0
-annualStatementsWorkerStep:annualPartition1
-annualStatementsWorkerStep:annualPartition2
-```
-
-## Comparacion de rendimiento
-
-La configuracion de escalamiento se puede comparar sin cambiar codigo, usando argumentos de Spring Boot:
+## API del core bancario
 
 ```bash
-./mvnw spring-boot:run -Dspring-boot.run.arguments="--batch.chunk-size=5 --batch.thread-pool-size=3 --batch.partition-grid-size=3"
-./mvnw spring-boot:run -Dspring-boot.run.arguments="--batch.chunk-size=3 --batch.thread-pool-size=3 --batch.partition-grid-size=3"
-./mvnw spring-boot:run -Dspring-boot.run.arguments="--batch.chunk-size=10 --batch.thread-pool-size=4 --batch.partition-grid-size=4"
+curl http://localhost:8080/api/estado
+curl http://localhost:8080/api/cuentas
+curl http://localhost:8080/api/cuentas/101
+curl http://localhost:8080/api/cuentas/101/resumen
+curl http://localhost:8080/api/cuentas/101/saldo
+curl "http://localhost:8080/api/cuentas/101/movimientos?limit=5"
+curl "http://localhost:8080/api/transacciones?onlyAnomalies=true&limit=5"
+curl "http://localhost:8080/api/rechazos?limit=5"
 ```
 
-Tambien se incluye un script para registrar la comparacion en CSV:
+## APIs BFF
+
+### BFF Web
 
 ```bash
-./scripts/run-performance-comparison.sh
+curl http://localhost:8081/web/cuentas/101/dashboard \
+  -H "X-Channel-Token: WEB-SECRET"
 ```
 
-El resultado queda en `output/performance-comparison.csv` con escenario, parametros usados y duracion total. La configuracion recomendada para la entrega es `chunk-size=5`, `thread-pool-size=3` y `partition-grid-size=3`, porque mantiene paralelismo visible sin sobrecargar la base local.
+Respuesta esperada: dashboard con datos de cuenta, saldo disponible, ultimos movimientos, alertas y secciones visibles para web.
 
-## Evidencias
+### BFF Mobile
 
-Las evidencias de ejecucion se encuentran en `screenshots/`.
-
-### Ambiente limpio
-
-![Docker limpio](screenshots/docker_clean_start.png)
-
-### Ejecucion batch Semana 3
-
-![Ejecucion batch](screenshots/batch_run_log.png)
-
-### Metadata de Spring Batch
-
-![Metadata Spring Batch](screenshots/batch_step_metadata.png)
-
-### Conteos finales
-
-![Conteos finales](screenshots/db_counts.png)
-
-### Datos procesados
-
-![Transacciones diarias](screenshots/daily_transaction_summary.png)
-
-![Intereses mensuales](screenshots/monthly_interest_results.png)
-
-![Estados de cuenta anuales](screenshots/annual_statement_entries.png)
-
-### Rechazos auditados
-
-![Resumen de rechazos](screenshots/rejected_records_summary.png)
-
-![Muestra de rechazos](screenshots/rejected_records_sample.png)
-
-El reporte anual se genera en `output/annual_statement_report.csv`.
-
-## Estructura
-
-```text
-src/main/java/cl/duoc/backendiii/bankbatch
-|-- config       Jobs, Steps, runner y resumen de ejecucion
-|-- domain       Modelos de entrada y salida
-|-- listener     Registro de skips tecnicos
-|-- partition    Particionamiento del proceso anual
-|-- policy       Politica personalizada de skip
-|-- processor    Validaciones y transformaciones
-|-- reader       Lectura CSV
-|-- writer       Escritura de reporte anual
+```bash
+curl http://localhost:8082/mobile/cuentas/101/inicio \
+  -H "X-Channel-Token: MOBILE-SECRET"
 ```
+
+Respuesta esperada: resumen liviano con saldo, datos principales de cuenta, ultimos movimientos y acciones rapidas.
+
+### BFF ATM
+
+```bash
+curl http://localhost:8083/atm/cuentas/101/saldo \
+  -H "X-Channel-Token: ATM-SECRET"
+```
+
+```bash
+curl -X POST http://localhost:8083/atm/cuentas/101/retiros \
+  -H "Content-Type: application/json" \
+  -H "X-Channel-Token: ATM-SECRET" \
+  -d '{"amount":1000,"pin":"1234"}'
+```
+
+Respuesta esperada: consulta de saldo o retiro simulado aprobado cuando el monto y el PIN cumplen las reglas del canal.
+
+## Autenticacion y autorizacion por canal
+
+Cada BFF valida el header `X-Channel-Token` antes de atender sus rutas. Se usa un token distinto por canal para representar que Web, Mobile y ATM son clientes diferentes y no comparten exactamente el mismo contrato de acceso.
+
+Tokens locales por defecto:
+
+| Canal | Header requerido |
+| --- | --- |
+| Web | `X-Channel-Token: WEB-SECRET` |
+| Mobile | `X-Channel-Token: MOBILE-SECRET` |
+| ATM | `X-Channel-Token: ATM-SECRET` |
+
+Esta solucion es intencionalmente simple para el alcance academico del proyecto: permite evidenciar autenticacion y autorizacion especificas por canal sin agregar la complejidad completa de OAuth2 o JWT.
+
+En un escenario productivo, estos tokens deberian reemplazarse por un proveedor de identidad, expiracion de credenciales, scopes por canal y auditoria centralizada. El BFF ATM agrega ademas validacion de `pin`, ya que ese canal ejecuta operaciones criticas.
+
+## Validaciones sugeridas
+
+| Validacion | Resultado esperado |
+| --- | --- |
+| `./mvnw test` | `BUILD SUCCESS` |
+| `GET /api/estado` | `200 OK` |
+| Web sin `X-Channel-Token` | `401 Unauthorized` |
+| Web con `WEB-SECRET` | `200 OK` |
+| Mobile sin `X-Channel-Token` | `401 Unauthorized` |
+| Mobile con `MOBILE-SECRET` | `200 OK` |
+| ATM sin `X-Channel-Token` | `401 Unauthorized` |
+| ATM con `ATM-SECRET` | `200 OK` |
+| Retiro ATM con token, monto y PIN valido | `200 OK` con retiro aprobado |
+
+## Evidencia de ejecucion
+
+Las siguientes capturas documentan la ejecucion del sistema y la validacion de los endpoints solicitados.
+
+### Servicios levantados
+
+![Servicios levantados](evidencias/01-servicios-levantados.png)
+
+### Pruebas automatizadas
+
+![Pruebas Maven exitosas](evidencias/02-mvn-test-success.png)
+
+### Core bancario
+
+![Core bancario respondiendo](evidencias/03-core-bancario.png)
+
+### BFF Web
+
+![BFF Web autorizado](evidencias/04-bff-web-autorizado.png)
+
+### BFF Mobile
+
+![BFF Mobile autorizado](evidencias/05-bff-mobile-autorizado.png)
+
+### BFF ATM
+
+![BFF ATM saldo autorizado](evidencias/06-bff-atm-saldo-autorizado.png)
+
+![BFF ATM retiro autorizado](evidencias/07-bff-atm-retiro-autorizado.png)
+
+### Autenticacion por canal
+
+![Rechazo sin token de canal](evidencias/08-rechazo-sin-token.png)
+
+### Coleccion Postman
+
+![Coleccion Postman ejecutada](evidencias/09-postman-collection-run.png)
