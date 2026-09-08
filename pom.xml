@@ -13,6 +13,8 @@
 
     <modules>
         <module>core-banking</module>
+        <module>bff-web</module>
+        <module>bff-mobile</module>
+        <module>bff-atm</module>
     </modules>
 </project>
-
