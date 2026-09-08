@@ -7,14 +7,12 @@ import org.junit.jupiter.api.Test;
 import java.math.BigDecimal;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
 
 class DailyTransactionProcessorTest {
 
     @Test
     void marksHighAmountAsAnomaly() {
-        DailyTransactionProcessor processor = newProcessor(mock(RejectedRecordWriter.class));
+        DailyTransactionProcessor processor = newProcessor(new TestRejectedRecordWriter());
 
         DailyTransactionSummary result = processor.process(new LegacyTransaction("1", "2024-01-07", "3000", "debito"));
 
@@ -25,20 +23,20 @@ class DailyTransactionProcessorTest {
 
     @Test
     void rejectsNegativeAmount() {
-        RejectedRecordWriter rejectedRecordWriter = mock(RejectedRecordWriter.class);
+        TestRejectedRecordWriter rejectedRecordWriter = new TestRejectedRecordWriter();
         DailyTransactionProcessor processor = newProcessor(rejectedRecordWriter);
 
         DailyTransactionSummary result = processor.process(new LegacyTransaction("3", "2024-01-03", "-200", "debito"));
 
         assertThat(result).isNull();
-        verify(rejectedRecordWriter).reject(org.mockito.ArgumentMatchers.argThat(rejected ->
-                rejected.reason().equals("monto debe ser mayor que cero")));
+        assertThat(rejectedRecordWriter.rejectedRecords())
+                .anySatisfy(rejected -> assertThat(rejected.reason()).isEqualTo("monto debe ser mayor que cero"));
     }
 
     @Test
     void acceptsTransactionTypesConfiguredByProperties() {
         DailyTransactionProcessor processor = new DailyTransactionProcessor(
-                mock(RejectedRecordWriter.class),
+                new TestRejectedRecordWriter(),
                 new BigDecimal("1000"),
                 "transferencia");
 
@@ -50,7 +48,7 @@ class DailyTransactionProcessorTest {
 
     @Test
     void acceptsDayFirstDateFormatsFromLegacyFiles() {
-        DailyTransactionProcessor processor = newProcessor(mock(RejectedRecordWriter.class));
+        DailyTransactionProcessor processor = newProcessor(new TestRejectedRecordWriter());
 
         DailyTransactionSummary dashDate = processor.process(new LegacyTransaction("20", "03-04-2024", "900", "credito"));
         DailyTransactionSummary slashDate = processor.process(new LegacyTransaction("21", "20/07/2024", "900", "debito"));
@@ -63,7 +61,7 @@ class DailyTransactionProcessorTest {
 
     @Test
     void doesNotRejectDifferentIdsWithSameDateAmountAndTypeAsDuplicates() {
-        DailyTransactionProcessor processor = newProcessor(mock(RejectedRecordWriter.class));
+        DailyTransactionProcessor processor = newProcessor(new TestRejectedRecordWriter());
 
         DailyTransactionSummary first = processor.process(new LegacyTransaction("30", "2024-01-07", "900", "credito"));
         DailyTransactionSummary second = processor.process(new LegacyTransaction("31", "2024-01-07", "900", "credito"));

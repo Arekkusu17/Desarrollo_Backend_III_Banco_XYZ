@@ -5,14 +5,13 @@ import cl.duoc.backendiii.bankbatch.domain.LegacyAnnualEntry;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
 
 class AnnualStatementProcessorTest {
 
     @Test
     void flagsWithdrawalsForAuditReview() {
         AnnualStatementProcessor processor = new AnnualStatementProcessor(
-                mock(RejectedRecordWriter.class),
+                new TestRejectedRecordWriter(),
                 "deposito,retiro,compra,pago",
                 "REVISION_EGRESO",
                 "OK");
@@ -26,7 +25,7 @@ class AnnualStatementProcessorTest {
     @Test
     void usesConfiguredAuditFlagsAndTransactionTypes() {
         AnnualStatementProcessor processor = new AnnualStatementProcessor(
-                mock(RejectedRecordWriter.class),
+                new TestRejectedRecordWriter(),
                 "ajuste",
                 "CONTROL_EGRESO",
                 "SIN_OBSERVACION");
@@ -41,7 +40,7 @@ class AnnualStatementProcessorTest {
     @Test
     void acceptsDayFirstDateFormatsFromLegacyFiles() {
         AnnualStatementProcessor processor = new AnnualStatementProcessor(
-                mock(RejectedRecordWriter.class),
+                new TestRejectedRecordWriter(),
                 "deposito,retiro,compra,pago",
                 "REVISION_EGRESO",
                 "OK");

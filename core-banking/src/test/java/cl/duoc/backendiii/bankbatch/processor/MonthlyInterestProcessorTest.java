@@ -7,14 +7,13 @@ import org.junit.jupiter.api.Test;
 import java.math.BigDecimal;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
 
 class MonthlyInterestProcessorTest {
 
     @Test
     void calculatesSavingsInterest() {
         MonthlyInterestProcessor processor = new MonthlyInterestProcessor(
-                mock(RejectedRecordWriter.class),
+                new TestRejectedRecordWriter(),
                 "ahorro:0.0050,prestamo:0.0180",
                 18,
                 100);
@@ -30,7 +29,7 @@ class MonthlyInterestProcessorTest {
     @Test
     void calculatesConfiguredAccountTypeRate() {
         MonthlyInterestProcessor processor = new MonthlyInterestProcessor(
-                mock(RejectedRecordWriter.class),
+                new TestRejectedRecordWriter(),
                 "corriente:0.0025",
                 18,
                 100);
