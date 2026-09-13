@@ -1,6 +1,6 @@
 package cl.duoc.backendiii.bff.atm.client;
 
-import cl.duoc.backendiii.bff.atm.model.AccountBalance;
+import cl.duoc.backendiii.bff.common.model.AccountBalance;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -20,4 +20,3 @@ public class CoreBankingClient {
                 .body(AccountBalance.class);
     }
 }
-

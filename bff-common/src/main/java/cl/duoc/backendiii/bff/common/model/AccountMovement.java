@@ -1,4 +1,4 @@
-package cl.duoc.backendiii.bff.web.model;
+package cl.duoc.backendiii.bff.common.model;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -12,4 +12,3 @@ public record AccountMovement(
         String auditFlag
 ) {
 }
-
