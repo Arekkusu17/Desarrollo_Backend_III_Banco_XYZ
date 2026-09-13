@@ -27,6 +27,7 @@ La estrategia seleccionada es **un BFF por canal**. Esta decision permite separa
 ```text
 Desarrollo_Backend_III_Banco_XYZ/
 |-- core-banking/    Backend central con Spring Batch, PostgreSQL y API REST
+|-- bff-common/      Configuracion tecnica y contratos reutilizables por los BFF
 |-- bff-web/         BFF para banca web
 |-- bff-mobile/      BFF para app movil
 |-- bff-atm/         BFF para cajeros automaticos
@@ -36,21 +37,25 @@ Desarrollo_Backend_III_Banco_XYZ/
 |-- pom.xml
 ```
 
-Cada modulo BFF mantiene el patron de carpetas usado en clase:
+Cada modulo BFF mantiene el patron de carpetas usado en clase para su logica propia:
 
 ```text
 controller/
 model/
 service/
 client/
-config/
 ```
 
+La carpeta `config/` queda centralizada en `bff-common`, porque contiene configuracion tecnica reutilizable y no reglas especificas de un canal.
+
 En `core-banking` tambien existen paquetes propios del procesamiento batch, como `reader`, `processor`, `writer`, `partition`, `policy` y `listener`.
+
+El modulo `bff-common` concentra solo piezas tecnicas compartidas: configuracion de `RestClient`, validacion del header `X-Channel-Token` y contratos del core reutilizados por mas de un canal. Los controladores, servicios y respuestas finales permanecen separados en cada BFF para mantener la personalizacion de Web, Mobile y ATM.
 
 ## Componentes
 
 - `core-banking`: procesa los archivos CSV legacy, persiste resultados en PostgreSQL y expone APIs REST internas.
+- `bff-common`: centraliza componentes tecnicos compartidos por los BFF sin mezclar reglas propias de canal.
 - `bff-web`: consume el core y arma un dashboard completo para banca web.
 - `bff-mobile`: consume el core y arma una vista compacta para aplicacion movil.
 - `bff-atm`: consume el core y expone operaciones limitadas para cajeros automaticos.
@@ -167,6 +172,8 @@ Respuesta esperada: consulta de saldo o retiro simulado aprobado cuando el monto
 ## Autenticacion y autorizacion por canal
 
 Cada BFF valida el header `X-Channel-Token` antes de atender sus rutas. Se usa un token distinto por canal para representar que Web, Mobile y ATM son clientes diferentes y no comparten exactamente el mismo contrato de acceso.
+
+La validacion vive en `bff-common` para evitar repetir interceptores y configuracion MVC en cada modulo. Cada BFF solo define su nombre de canal, token y patron de ruta mediante propiedades.
 
 Tokens locales por defecto:
 

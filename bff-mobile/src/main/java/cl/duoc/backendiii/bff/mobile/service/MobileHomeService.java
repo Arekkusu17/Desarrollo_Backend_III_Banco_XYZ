@@ -1,7 +1,7 @@
 package cl.duoc.backendiii.bff.mobile.service;
 
+import cl.duoc.backendiii.bff.common.model.AccountBalance;
 import cl.duoc.backendiii.bff.mobile.client.CoreBankingClient;
-import cl.duoc.backendiii.bff.mobile.model.AccountBalance;
 import cl.duoc.backendiii.bff.mobile.model.MobileHomeResponse;
 import cl.duoc.backendiii.bff.mobile.model.MobileMovementItem;
 import org.springframework.stereotype.Service;
@@ -38,4 +38,3 @@ public class MobileHomeService {
         );
     }
 }
-
