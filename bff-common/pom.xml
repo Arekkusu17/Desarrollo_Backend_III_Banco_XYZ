@@ -12,10 +12,10 @@
     </parent>
 
     <groupId>cl.duoc.backendiii</groupId>
-    <artifactId>bff-web</artifactId>
+    <artifactId>bff-common</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>bff-web</name>
-    <description>BFF para banca web de Banco XYZ.</description>
+    <name>bff-common</name>
+    <description>Componentes tecnicos compartidos por los BFF de Banco XYZ.</description>
 
     <properties>
         <java.version>17</java.version>
@@ -23,27 +23,8 @@
 
     <dependencies>
         <dependency>
-            <groupId>cl.duoc.backendiii</groupId>
-            <artifactId>bff-common</artifactId>
-            <version>0.0.1-SNAPSHOT</version>
-        </dependency>
-        <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-test</artifactId>
-            <scope>test</scope>
-        </dependency>
     </dependencies>
-
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-maven-plugin</artifactId>
-            </plugin>
-        </plugins>
-    </build>
 </project>
