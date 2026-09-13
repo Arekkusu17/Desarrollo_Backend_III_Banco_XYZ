@@ -221,6 +221,21 @@ Respuesta esperada: consulta de saldo o retiro simulado aprobado cuando el monto
 
 Las capturas de `evidencias/` documentan la ejecucion del sistema y la validacion de los endpoints solicitados.
 
+Reemplazar o actualizar las capturas con los siguientes nombres:
+
+| Archivo | Evidencia esperada |
+| --- | --- |
+| `evidencias/01-servicios-levantados.png` | Salida de `docker compose ps` con PostgreSQL, core y los tres BFF levantados. |
+| `evidencias/02-mvn-test-success.png` | Salida de `./mvnw test` mostrando `BUILD SUCCESS`. |
+| `evidencias/03-core-bancario.png` | Respuesta de `curl http://localhost:8080/api/estado`. |
+| `evidencias/04-bff-web-autorizado.png` | Respuesta de `curl -k -u webuser:web123 https://localhost:8081/web/cuentas/101/dashboard`. |
+| `evidencias/05-bff-mobile-autorizado.png` | Respuesta de `curl -k -u mobileuser:mobile123 https://localhost:8082/mobile/cuentas/101/inicio`. |
+| `evidencias/06-bff-atm-saldo-autorizado.png` | Respuesta de `curl -k -u atmuser:atm123 https://localhost:8083/atm/cuentas/101/saldo`. |
+| `evidencias/07-bff-atm-retiro-autorizado.png` | Respuesta de retiro ATM autorizado con `atmuser:atm123`, monto valido y PIN `1234`. |
+| `evidencias/08-rechazo-sin-credenciales.png` | Respuesta `HTTP/1.1 401` al consumir un BFF sin credenciales. |
+| `evidencias/09-rechazo-rol-incorrecto.png` | Respuesta `HTTP/1.1 403` al usar un usuario valido en el BFF de otro canal. |
+| `evidencias/10-postman-collection-run.png` | Ejecucion exitosa de `postman/Banco_XYZ_Semana_5.postman_collection.json`. |
+
 ## Entrega
 
 El proyecto se debe subir a GitHub junto con este README, la propuesta tecnica y evidencias de ejecucion. Para AVA, todos los componentes deben quedar en una misma carpeta comprimida con la nomenclatura:
