@@ -1,8 +1,8 @@
-# Banco XYZ BFF
+# Banco XYZ BFF Seguro
 
-Proyecto formativo de Semana 4 para implementar el patron **Backend for Frontend (BFF)** sobre el backend bancario construido en la continuidad del proyecto Banco XYZ.
+Proyecto formativo de Semana 5 para implementar el patron **Backend for Frontend (BFF)** sobre el backend bancario construido en la continuidad del proyecto Banco XYZ.
 
-El sistema expone un backend central con los datos procesados desde archivos legacy y tres BFF independientes, cada uno adaptado a las necesidades de un canal: web, movil y cajero automatico.
+El sistema expone un backend central con los datos procesados desde archivos legacy y tres BFF independientes, cada uno adaptado a las necesidades de un canal: web, movil y cajero automatico. La implementacion agrega HTTPS, autenticacion y autorizacion por rol para demostrar acceso seguro por canal.
 
 ## Objetivo
 
@@ -22,50 +22,63 @@ La estrategia seleccionada es **un BFF por canal**. Esta decision permite separa
 
 ![Arquitectura BFF Banco XYZ](evidencias/00-arquitectura-bff.png)
 
+```text
+WEB ----HTTPS----> BFF WEB :8081 ----\
+                                      \
+MOBILE -HTTPS----> BFF MOBILE :8082 ---- HTTP interno ----> CORE BANKING :8080
+                                      /
+ATM ----HTTPS----> BFF ATM :8083 ----/
+```
+
+El flujo de cada BFF mantiene la separacion:
+
+```text
+Controller -> Service -> Client -> Core Banking
+```
+
 ## Estructura del proyecto
 
 ```text
 Desarrollo_Backend_III_Banco_XYZ/
 |-- core-banking/    Backend central con Spring Batch, PostgreSQL y API REST
-|-- bff-common/      Configuracion tecnica y contratos reutilizables por los BFF
+|-- bff-common/      RestClient compartido y seguridad comun de los BFF
 |-- bff-web/         BFF para banca web
 |-- bff-mobile/      BFF para app movil
 |-- bff-atm/         BFF para cajeros automaticos
 |-- postman/         Coleccion de prueba de APIs
 |-- evidencias/      Capturas de ejecucion para la entrega
+|-- scripts/         Script para certificado HTTPS de laboratorio
 |-- docker-compose.yml
 |-- pom.xml
 ```
 
-Cada modulo BFF mantiene el patron de carpetas usado en clase para su logica propia:
-
-```text
-controller/
-model/
-service/
-client/
-```
-
-La carpeta `config/` queda centralizada en `bff-common`, porque contiene configuracion tecnica reutilizable y no reglas especificas de un canal.
-
-En `core-banking` tambien existen paquetes propios del procesamiento batch, como `reader`, `processor`, `writer`, `partition`, `policy` y `listener`.
-
-El modulo `bff-common` concentra solo piezas tecnicas compartidas: configuracion de `RestClient`, validacion del header `X-Channel-Token` y contratos del core reutilizados por mas de un canal. Los controladores, servicios y respuestas finales permanecen separados en cada BFF para mantener la personalizacion de Web, Mobile y ATM.
-
-## Componentes
-
-- `core-banking`: procesa los archivos CSV legacy, persiste resultados en PostgreSQL y expone APIs REST internas.
-- `bff-common`: centraliza componentes tecnicos compartidos por los BFF sin mezclar reglas propias de canal.
-- `bff-web`: consume el core y arma un dashboard completo para banca web.
-- `bff-mobile`: consume el core y arma una vista compacta para aplicacion movil.
-- `bff-atm`: consume el core y expone operaciones limitadas para cajeros automaticos.
+Cada modulo BFF mantiene su logica propia en paquetes `controller`, `model`, `service` y `client`. El modulo `bff-common` concentra la configuracion tecnica reutilizable: `RestClient`, usuarios de laboratorio, autenticacion HTTP Basic, autorizacion por rol y respuestas `401/403`.
 
 ## Requisitos
 
 - Java 17 o superior.
 - Docker y Docker Compose.
 - Maven Wrapper incluido en el proyecto.
+- `keytool` disponible en el JDK.
 - Postman para ejecutar la coleccion de validacion.
+
+## Certificado HTTPS
+
+Los BFF usan HTTPS con un certificado autofirmado de laboratorio. Para generarlo:
+
+```bash
+./scripts/generar-certificados.sh
+```
+
+El script copia `keystore.p12` a:
+
+```text
+bff-web/src/main/resources/
+bff-mobile/src/main/resources/
+bff-atm/src/main/resources/
+```
+
+La clave local del keystore es `changeit`. Es una credencial didactica y no debe usarse en produccion.
 
 ## Ejecucion
 
@@ -85,13 +98,7 @@ Ejecutar cada BFF en una terminal distinta:
 
 ```bash
 ./mvnw -pl bff-web spring-boot:run
-```
-
-```bash
 ./mvnw -pl bff-mobile spring-boot:run
-```
-
-```bash
 ./mvnw -pl bff-atm spring-boot:run
 ```
 
@@ -100,9 +107,31 @@ Puertos utilizados:
 | Servicio | URL |
 | --- | --- |
 | Core Banking | `http://localhost:8080` |
-| BFF Web | `http://localhost:8081` |
-| BFF Mobile | `http://localhost:8082` |
-| BFF ATM | `http://localhost:8083` |
+| BFF Web | `https://localhost:8081` |
+| BFF Mobile | `https://localhost:8082` |
+| BFF ATM | `https://localhost:8083` |
+
+## Usuarios de laboratorio
+
+| Usuario | Password | Rol | Canal |
+| --- | --- | --- | --- |
+| `webuser` | `web123` | `WEB` | Web |
+| `mobileuser` | `mobile123` | `MOBILE` | Mobile |
+| `atmuser` | `atm123` | `ATM` | Cajero automatico |
+
+Las claves se pueden reemplazar con variables de entorno: `WEB_PASSWORD`, `MOBILE_PASSWORD` y `ATM_PASSWORD`.
+
+## Seguridad
+
+Cada BFF publica sus endpoints por HTTPS y valida credenciales con Spring Security. La autenticacion usa HTTP Basic y la autorizacion se define por rol:
+
+| BFF | Ruta protegida | Rol requerido |
+| --- | --- | --- |
+| `bff-web` | `/web/**` | `WEB` |
+| `bff-mobile` | `/mobile/**` | `MOBILE` |
+| `bff-atm` | `/atm/**` | `ATM` |
+
+Sin credenciales o con credenciales invalidas, el BFF responde `401 Unauthorized`. Con un usuario valido pero de otro canal, responde `403 Forbidden`.
 
 ## Pruebas
 
@@ -115,10 +144,8 @@ Ejecutar la suite completa:
 La coleccion Postman esta disponible en:
 
 ```text
-postman/Banco_XYZ_Semana_4.postman_collection.json
+postman/Banco_XYZ_Semana_5.postman_collection.json
 ```
-
-La coleccion contiene pruebas para el core bancario y los tres BFF. Incluye casos autorizados con `X-Channel-Token` y casos sin token para comprobar el rechazo `401` por canal.
 
 ## API del core bancario
 
@@ -138,8 +165,7 @@ curl "http://localhost:8080/api/rechazos?limit=5"
 ### BFF Web
 
 ```bash
-curl http://localhost:8081/web/cuentas/101/dashboard \
-  -H "X-Channel-Token: WEB-SECRET"
+curl -k -u webuser:web123 https://localhost:8081/web/cuentas/101/dashboard
 ```
 
 Respuesta esperada: dashboard con datos de cuenta, saldo disponible, ultimos movimientos, alertas y secciones visibles para web.
@@ -147,8 +173,7 @@ Respuesta esperada: dashboard con datos de cuenta, saldo disponible, ultimos mov
 ### BFF Mobile
 
 ```bash
-curl http://localhost:8082/mobile/cuentas/101/inicio \
-  -H "X-Channel-Token: MOBILE-SECRET"
+curl -k -u mobileuser:mobile123 https://localhost:8082/mobile/cuentas/101/inicio
 ```
 
 Respuesta esperada: resumen liviano con saldo, datos principales de cuenta, ultimos movimientos y acciones rapidas.
@@ -156,36 +181,16 @@ Respuesta esperada: resumen liviano con saldo, datos principales de cuenta, ulti
 ### BFF ATM
 
 ```bash
-curl http://localhost:8083/atm/cuentas/101/saldo \
-  -H "X-Channel-Token: ATM-SECRET"
+curl -k -u atmuser:atm123 https://localhost:8083/atm/cuentas/101/saldo
 ```
 
 ```bash
-curl -X POST http://localhost:8083/atm/cuentas/101/retiros \
+curl -k -u atmuser:atm123 -X POST https://localhost:8083/atm/cuentas/101/retiros \
   -H "Content-Type: application/json" \
-  -H "X-Channel-Token: ATM-SECRET" \
   -d '{"amount":1000,"pin":"1234"}'
 ```
 
 Respuesta esperada: consulta de saldo o retiro simulado aprobado cuando el monto y el PIN cumplen las reglas del canal.
-
-## Autenticacion y autorizacion por canal
-
-Cada BFF valida el header `X-Channel-Token` antes de atender sus rutas. Se usa un token distinto por canal para representar que Web, Mobile y ATM son clientes diferentes y no comparten exactamente el mismo contrato de acceso.
-
-La validacion vive en `bff-common` para evitar repetir interceptores y configuracion MVC en cada modulo. Cada BFF solo define su nombre de canal, token y patron de ruta mediante propiedades.
-
-Tokens locales por defecto:
-
-| Canal | Header requerido |
-| --- | --- |
-| Web | `X-Channel-Token: WEB-SECRET` |
-| Mobile | `X-Channel-Token: MOBILE-SECRET` |
-| ATM | `X-Channel-Token: ATM-SECRET` |
-
-Esta solucion es intencionalmente simple para el alcance academico del proyecto: permite evidenciar autenticacion y autorizacion especificas por canal sin agregar la complejidad completa de OAuth2 o JWT.
-
-En un escenario productivo, estos tokens deberian reemplazarse por un proveedor de identidad, expiracion de credenciales, scopes por canal y auditoria centralizada. El BFF ATM agrega ademas validacion de `pin`, ya que ese canal ejecuta operaciones criticas.
 
 ## Validaciones sugeridas
 
@@ -193,48 +198,25 @@ En un escenario productivo, estos tokens deberian reemplazarse por un proveedor 
 | --- | --- |
 | `./mvnw test` | `BUILD SUCCESS` |
 | `GET /api/estado` | `200 OK` |
-| Web sin `X-Channel-Token` | `401 Unauthorized` |
-| Web con `WEB-SECRET` | `200 OK` |
-| Mobile sin `X-Channel-Token` | `401 Unauthorized` |
-| Mobile con `MOBILE-SECRET` | `200 OK` |
-| ATM sin `X-Channel-Token` | `401 Unauthorized` |
-| ATM con `ATM-SECRET` | `200 OK` |
-| Retiro ATM con token, monto y PIN valido | `200 OK` con retiro aprobado |
+| Web sin credenciales | `401 Unauthorized` |
+| Web con `webuser:web123` | `200 OK` |
+| Web con `mobileuser:mobile123` | `403 Forbidden` |
+| Mobile sin credenciales | `401 Unauthorized` |
+| Mobile con `mobileuser:mobile123` | `200 OK` |
+| Mobile con `atmuser:atm123` | `403 Forbidden` |
+| ATM sin credenciales | `401 Unauthorized` |
+| ATM con `atmuser:atm123` | `200 OK` |
+| ATM con `webuser:web123` | `403 Forbidden` |
+| Retiro ATM con usuario, monto y PIN valido | `200 OK` con retiro aprobado |
 
 ## Evidencia de ejecucion
 
-Las siguientes capturas documentan la ejecucion del sistema y la validacion de los endpoints solicitados.
+Las capturas de `evidencias/` documentan la ejecucion del sistema y la validacion de los endpoints solicitados.
 
-### Servicios levantados
+## Entrega
 
-![Servicios levantados](evidencias/01-servicios-levantados.png)
+El proyecto se debe subir a GitHub junto con este README, la propuesta tecnica y evidencias de ejecucion. Para AVA, todos los componentes deben quedar en una misma carpeta comprimida con la nomenclatura:
 
-### Pruebas automatizadas
-
-![Pruebas Maven exitosas](evidencias/02-mvn-test-success.png)
-
-### Core bancario
-
-![Core bancario respondiendo](evidencias/03-core-bancario.png)
-
-### BFF Web
-
-![BFF Web autorizado](evidencias/04-bff-web-autorizado.png)
-
-### BFF Mobile
-
-![BFF Mobile autorizado](evidencias/05-bff-mobile-autorizado.png)
-
-### BFF ATM
-
-![BFF ATM saldo autorizado](evidencias/06-bff-atm-saldo-autorizado.png)
-
-![BFF ATM retiro autorizado](evidencias/07-bff-atm-retiro-autorizado.png)
-
-### Autenticacion por canal
-
-![Rechazo sin token de canal](evidencias/08-rechazo-sin-token.png)
-
-### Coleccion Postman
-
-![Coleccion Postman ejecutada](evidencias/09-postman-collection-run.png)
+```text
+Exp2_S5_Nombre_Apellido_Apellido
+```

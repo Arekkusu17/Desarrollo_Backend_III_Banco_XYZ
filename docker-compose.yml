@@ -34,7 +34,9 @@ services:
     container_name: banco-xyz-bff-web
     environment:
       CORE_BANKING_URL: http://core-banking:8080
-      WEB_CHANNEL_TOKEN: WEB-SECRET
+      WEB_PASSWORD: web123
+      MOBILE_PASSWORD: mobile123
+      ATM_PASSWORD: atm123
     ports:
       - "8081:8081"
     depends_on:
@@ -45,7 +47,9 @@ services:
     container_name: banco-xyz-bff-mobile
     environment:
       CORE_BANKING_URL: http://core-banking:8080
-      MOBILE_CHANNEL_TOKEN: MOBILE-SECRET
+      WEB_PASSWORD: web123
+      MOBILE_PASSWORD: mobile123
+      ATM_PASSWORD: atm123
     ports:
       - "8082:8082"
     depends_on:
@@ -56,7 +60,9 @@ services:
     container_name: banco-xyz-bff-atm
     environment:
       CORE_BANKING_URL: http://core-banking:8080
-      ATM_CHANNEL_TOKEN: ATM-SECRET
+      WEB_PASSWORD: web123
+      MOBILE_PASSWORD: mobile123
+      ATM_PASSWORD: atm123
     ports:
       - "8083:8083"
     depends_on:
