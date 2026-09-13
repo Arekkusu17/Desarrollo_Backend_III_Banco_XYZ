@@ -88,6 +88,14 @@ Levantar PostgreSQL:
 docker compose up -d postgres
 ```
 
+Construir las imagenes Docker de los servicios:
+
+```bash
+docker compose build core-banking bff-web bff-mobile bff-atm
+```
+
+Cada Dockerfile usa una etapa Maven para compilar el jar dentro de la imagen y una etapa final `eclipse-temurin:17-jre` para ejecutar el servicio.
+
 Ejecutar el core bancario:
 
 ```bash
