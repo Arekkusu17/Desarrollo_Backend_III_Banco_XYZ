@@ -1,4 +1,4 @@
-package cl.duoc.backendiii.bff.atm.model;
+package cl.duoc.backendiii.bff.common.model;
 
 import java.math.BigDecimal;
 
@@ -9,4 +9,3 @@ public record AccountBalance(
         BigDecimal availableBalance
 ) {
 }
-

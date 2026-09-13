@@ -1,10 +1,10 @@
 package cl.duoc.backendiii.bff.atm.service;
 
 import cl.duoc.backendiii.bff.atm.client.CoreBankingClient;
-import cl.duoc.backendiii.bff.atm.model.AccountBalance;
 import cl.duoc.backendiii.bff.atm.model.AtmBalanceResponse;
 import cl.duoc.backendiii.bff.atm.model.WithdrawalRequest;
 import cl.duoc.backendiii.bff.atm.model.WithdrawalResponse;
+import cl.duoc.backendiii.bff.common.model.AccountBalance;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -57,4 +57,3 @@ public class AtmService {
         return new WithdrawalResponse("ATM", accountId, amount, false, message, null);
     }
 }
-

@@ -1,7 +1,7 @@
 package cl.duoc.backendiii.bff.mobile.client;
 
-import cl.duoc.backendiii.bff.mobile.model.AccountBalance;
-import cl.duoc.backendiii.bff.mobile.model.AccountMovement;
+import cl.duoc.backendiii.bff.common.model.AccountBalance;
+import cl.duoc.backendiii.bff.common.model.AccountMovement;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -32,4 +32,3 @@ public class CoreBankingClient {
                 });
     }
 }
-
