@@ -1,0 +1,415 @@
+{
+  "info": {
+    "name": "Banco XYZ - Semana 5",
+    "description": "Validaciones para core-banking y BFF seguros por canal. Cada BFF usa HTTPS, HTTP Basic y autorizacion por rol para demostrar respuestas 200, 401 y 403.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "coreUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "webUrl",
+      "value": "https://localhost:8081"
+    },
+    {
+      "key": "mobileUrl",
+      "value": "https://localhost:8082"
+    },
+    {
+      "key": "atmUrl",
+      "value": "https://localhost:8083"
+    },
+    {
+      "key": "accountId",
+      "value": "101"
+    },
+    {
+      "key": "webUser",
+      "value": "webuser"
+    },
+    {
+      "key": "webPassword",
+      "value": "web123"
+    },
+    {
+      "key": "mobileUser",
+      "value": "mobileuser"
+    },
+    {
+      "key": "mobilePassword",
+      "value": "mobile123"
+    },
+    {
+      "key": "atmUser",
+      "value": "atmuser"
+    },
+    {
+      "key": "atmPassword",
+      "value": "atm123"
+    }
+  ],
+  "item": [
+    {
+      "name": "Core Banking",
+      "item": [
+        {
+          "name": "Estado del core",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{coreUrl}}/api/estado",
+              "host": [
+                "{{coreUrl}}"
+              ],
+              "path": [
+                "api",
+                "estado"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Resumen de cuenta",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{coreUrl}}/api/cuentas/{{accountId}}/resumen",
+              "host": [
+                "{{coreUrl}}"
+              ],
+              "path": [
+                "api",
+                "cuentas",
+                "{{accountId}}",
+                "resumen"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "BFF Web",
+      "item": [
+        {
+          "name": "Dashboard Web - autorizado 200",
+          "request": {
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{webUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{webPassword}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{webUrl}}/web/cuentas/{{accountId}}/dashboard",
+              "host": [
+                "{{webUrl}}"
+              ],
+              "path": [
+                "web",
+                "cuentas",
+                "{{accountId}}",
+                "dashboard"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Dashboard Web - sin credenciales 401",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{webUrl}}/web/cuentas/{{accountId}}/dashboard",
+              "host": [
+                "{{webUrl}}"
+              ],
+              "path": [
+                "web",
+                "cuentas",
+                "{{accountId}}",
+                "dashboard"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Dashboard Web - usuario mobile 403",
+          "request": {
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{mobileUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{mobilePassword}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{webUrl}}/web/cuentas/{{accountId}}/dashboard",
+              "host": [
+                "{{webUrl}}"
+              ],
+              "path": [
+                "web",
+                "cuentas",
+                "{{accountId}}",
+                "dashboard"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "BFF Mobile",
+      "item": [
+        {
+          "name": "Inicio Mobile - autorizado 200",
+          "request": {
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{mobileUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{mobilePassword}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{mobileUrl}}/mobile/cuentas/{{accountId}}/inicio",
+              "host": [
+                "{{mobileUrl}}"
+              ],
+              "path": [
+                "mobile",
+                "cuentas",
+                "{{accountId}}",
+                "inicio"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Inicio Mobile - sin credenciales 401",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{mobileUrl}}/mobile/cuentas/{{accountId}}/inicio",
+              "host": [
+                "{{mobileUrl}}"
+              ],
+              "path": [
+                "mobile",
+                "cuentas",
+                "{{accountId}}",
+                "inicio"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Inicio Mobile - usuario ATM 403",
+          "request": {
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{atmUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{atmPassword}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{mobileUrl}}/mobile/cuentas/{{accountId}}/inicio",
+              "host": [
+                "{{mobileUrl}}"
+              ],
+              "path": [
+                "mobile",
+                "cuentas",
+                "{{accountId}}",
+                "inicio"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "BFF ATM",
+      "item": [
+        {
+          "name": "Saldo ATM - autorizado 200",
+          "request": {
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{atmUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{atmPassword}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{atmUrl}}/atm/cuentas/{{accountId}}/saldo",
+              "host": [
+                "{{atmUrl}}"
+              ],
+              "path": [
+                "atm",
+                "cuentas",
+                "{{accountId}}",
+                "saldo"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Saldo ATM - sin credenciales 401",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{atmUrl}}/atm/cuentas/{{accountId}}/saldo",
+              "host": [
+                "{{atmUrl}}"
+              ],
+              "path": [
+                "atm",
+                "cuentas",
+                "{{accountId}}",
+                "saldo"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Saldo ATM - usuario web 403",
+          "request": {
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{webUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{webPassword}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{atmUrl}}/atm/cuentas/{{accountId}}/saldo",
+              "host": [
+                "{{atmUrl}}"
+              ],
+              "path": [
+                "atm",
+                "cuentas",
+                "{{accountId}}",
+                "saldo"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Retiro ATM - autorizado 200",
+          "request": {
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{atmUser}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{atmPassword}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 1000,\n  \"pin\": \"1234\"\n}"
+            },
+            "url": {
+              "raw": "{{atmUrl}}/atm/cuentas/{{accountId}}/retiros",
+              "host": [
+                "{{atmUrl}}"
+              ],
+              "path": [
+                "atm",
+                "cuentas",
+                "{{accountId}}",
+                "retiros"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
