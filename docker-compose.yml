@@ -17,7 +17,9 @@ services:
       retries: 10
 
   core-banking:
-    build: ./core-banking
+    build:
+      context: .
+      dockerfile: core-banking/Dockerfile
     container_name: banco-xyz-core-banking
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/banco_xyz
@@ -30,33 +32,45 @@ services:
         condition: service_healthy
 
   bff-web:
-    build: ./bff-web
+    build:
+      context: .
+      dockerfile: bff-web/Dockerfile
     container_name: banco-xyz-bff-web
     environment:
       CORE_BANKING_URL: http://core-banking:8080
-      WEB_CHANNEL_TOKEN: WEB-SECRET
+      WEB_PASSWORD: web123
+      MOBILE_PASSWORD: mobile123
+      ATM_PASSWORD: atm123
     ports:
       - "8081:8081"
     depends_on:
       - core-banking
 
   bff-mobile:
-    build: ./bff-mobile
+    build:
+      context: .
+      dockerfile: bff-mobile/Dockerfile
     container_name: banco-xyz-bff-mobile
     environment:
       CORE_BANKING_URL: http://core-banking:8080
-      MOBILE_CHANNEL_TOKEN: MOBILE-SECRET
+      WEB_PASSWORD: web123
+      MOBILE_PASSWORD: mobile123
+      ATM_PASSWORD: atm123
     ports:
       - "8082:8082"
     depends_on:
       - core-banking
 
   bff-atm:
-    build: ./bff-atm
+    build:
+      context: .
+      dockerfile: bff-atm/Dockerfile
     container_name: banco-xyz-bff-atm
     environment:
       CORE_BANKING_URL: http://core-banking:8080
-      ATM_CHANNEL_TOKEN: ATM-SECRET
+      WEB_PASSWORD: web123
+      MOBILE_PASSWORD: mobile123
+      ATM_PASSWORD: atm123
     ports:
       - "8083:8083"
     depends_on:

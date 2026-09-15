@@ -1,6 +1,6 @@
 # Core Banking Banco XYZ
 
-Backend central del proyecto Banco XYZ. Este servicio mantiene la solucion batch de Semana 3 y agrega una API REST para que los BFF de Semana 4 consuman datos procesados.
+Backend central del proyecto Banco XYZ. Este servicio mantiene la solucion batch de Semana 3 y agrega una API REST para que los BFF de Semana 5 consuman datos procesados.
 
 El proyecto procesa archivos CSV, valida datos inconsistentes, persiste resultados en PostgreSQL, registra rechazos auditables y aplica escalamiento mediante multithreading y particiones.
 

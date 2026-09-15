@@ -7,10 +7,9 @@ Consume `core-banking` y expone endpoints reducidos, pensados para velocidad y b
 ## Endpoint
 
 ```bash
-curl http://localhost:8082/mobile/cuentas/101/inicio \
-  -H "X-Channel-Token: MOBILE-SECRET"
+curl -k -u mobileuser:mobile123 https://localhost:8082/mobile/cuentas/101/inicio
 ```
 
 ## Seguridad del canal
 
-Este BFF exige el header `X-Channel-Token` con el token configurado en `channel.auth-token`. La validacion representa que la app movil tiene un canal autorizado propio y solo recibe un contrato liviano con los datos necesarios.
+Este BFF expone sus endpoints por HTTPS y exige autenticacion HTTP Basic. Solo usuarios con rol `MOBILE` pueden acceder a `/mobile/**`; usuarios validos de otros canales reciben `403 Forbidden`.

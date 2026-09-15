@@ -5,7 +5,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "channel")
 public record ChannelAuthProperties(
         String name,
-        String authToken,
-        String pathPattern
+        String pathPattern,
+        String role
 ) {
 }
