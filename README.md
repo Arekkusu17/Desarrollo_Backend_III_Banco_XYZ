@@ -82,33 +82,33 @@ La clave local del keystore es `changeit`. Es una credencial didactica y no debe
 
 ## Ejecucion
 
-Levantar PostgreSQL:
+Desde la raiz del proyecto, levantar todos los servicios con Docker Compose:
 
 ```bash
-docker compose up -d postgres
+docker compose up -d --build
 ```
 
-Construir las imagenes Docker de los servicios:
+El comando construye las imagenes cuando existen cambios y deja ejecutando PostgreSQL, Core Banking y los tres BFF.
+
+Para revisar el estado de los contenedores:
 
 ```bash
-docker compose build core-banking bff-web bff-mobile bff-atm
+docker compose ps
 ```
 
-Cada Dockerfile usa una etapa Maven para compilar el jar dentro de la imagen y una etapa final `eclipse-temurin:17-jre` para ejecutar el servicio.
-
-Ejecutar el core bancario:
+Para detener el ambiente:
 
 ```bash
-./mvnw -pl core-banking spring-boot:run
+docker compose down
 ```
 
-Ejecutar cada BFF en una terminal distinta:
+Si se requiere eliminar tambien los datos locales de PostgreSQL:
 
 ```bash
-./mvnw -pl bff-web spring-boot:run
-./mvnw -pl bff-mobile spring-boot:run
-./mvnw -pl bff-atm spring-boot:run
+docker compose down -v
 ```
+
+Cada Dockerfile usa una etapa Maven para compilar el jar dentro de la imagen y una etapa final `eclipse-temurin:17-jre` para ejecutar el servicio. Por eso no es necesario empaquetar los modulos manualmente antes de usar Compose.
 
 Puertos utilizados:
 
@@ -221,25 +221,38 @@ Respuesta esperada: consulta de saldo o retiro simulado aprobado cuando el monto
 
 Las capturas de `evidencias/` documentan la ejecucion del sistema y la validacion de los endpoints solicitados.
 
-Reemplazar o actualizar las capturas con los siguientes nombres:
+### Servicios levantados
 
-| Archivo | Evidencia esperada |
-| --- | --- |
-| `evidencias/01-servicios-levantados.png` | Salida de `docker compose ps` con PostgreSQL, core y los tres BFF levantados. |
-| `evidencias/02-mvn-test-success.png` | Salida de `./mvnw test` mostrando `BUILD SUCCESS`. |
-| `evidencias/03-core-bancario.png` | Respuesta de `curl http://localhost:8080/api/estado`. |
-| `evidencias/04-bff-web-autorizado.png` | Respuesta de `curl -k -u webuser:web123 https://localhost:8081/web/cuentas/101/dashboard`. |
-| `evidencias/05-bff-mobile-autorizado.png` | Respuesta de `curl -k -u mobileuser:mobile123 https://localhost:8082/mobile/cuentas/101/inicio`. |
-| `evidencias/06-bff-atm-saldo-autorizado.png` | Respuesta de `curl -k -u atmuser:atm123 https://localhost:8083/atm/cuentas/101/saldo`. |
-| `evidencias/07-bff-atm-retiro-autorizado.png` | Respuesta de retiro ATM autorizado con `atmuser:atm123`, monto valido y PIN `1234`. |
-| `evidencias/08-rechazo-sin-credenciales.png` | Respuesta `HTTP/1.1 401` al consumir un BFF sin credenciales. |
-| `evidencias/09-rechazo-rol-incorrecto.png` | Respuesta `HTTP/1.1 403` al usar un usuario valido en el BFF de otro canal. |
-| `evidencias/10-postman-collection-run.png` | Ejecucion exitosa de `postman/Banco_XYZ_Semana_5.postman_collection.json`. |
+![Servicios levantados](evidencias/01-servicios-levantados.png)
 
-## Entrega
+### Pruebas automatizadas
 
-El proyecto se debe subir a GitHub junto con este README, la propuesta tecnica y evidencias de ejecucion. Para AVA, todos los componentes deben quedar en una misma carpeta comprimida con la nomenclatura:
+![Pruebas Maven exitosas](evidencias/02-mvn-test-success.png)
 
-```text
-Exp2_S5_Nombre_Apellido_Apellido
-```
+### Core bancario
+
+![Core bancario respondiendo](evidencias/03-core-bancario.png)
+
+### BFF Web
+
+![BFF Web autorizado](evidencias/04-bff-web-autorizado.png)
+
+### BFF Mobile
+
+![BFF Mobile autorizado](evidencias/05-bff-mobile-autorizado.png)
+
+### BFF ATM
+
+![BFF ATM saldo autorizado](evidencias/06-bff-atm-saldo-autorizado.png)
+
+![BFF ATM retiro autorizado](evidencias/07-bff-atm-retiro-autorizado.png)
+
+### Seguridad por canal
+
+![Rechazo sin credenciales](evidencias/08-rechazo-sin-credenciales.png)
+
+![Rechazo por rol incorrecto](evidencias/09-rechazo-rol-incorrecto.png)
+
+### Coleccion Postman
+
+![Coleccion Postman ejecutada](evidencias/10-postman-collection-run.png)
