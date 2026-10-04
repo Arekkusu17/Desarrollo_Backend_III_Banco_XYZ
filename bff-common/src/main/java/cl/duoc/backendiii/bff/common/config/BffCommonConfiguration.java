@@ -2,8 +2,10 @@ package cl.duoc.backendiii.bff.common.config;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.cloud.client.loadbalancer.LoadBalanced;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -20,11 +22,32 @@ import org.springframework.web.client.RestClient;
 @EnableConfigurationProperties(ChannelAuthProperties.class)
 public class BffCommonConfiguration {
 
+    @Bean("loadBalancedRestClientBuilder")
+    @LoadBalanced
+    RestClient.Builder loadBalancedRestClientBuilder() {
+        return RestClient.builder();
+    }
+
+    @Bean("standardRestClientBuilder")
+    RestClient.Builder standardRestClientBuilder() {
+        return RestClient.builder();
+    }
+
     @Bean
-    RestClient coreBankingRestClient(@Value("${core.banking.url}") String coreBankingUrl) {
-        return RestClient.builder()
+    RestClient coreBankingRestClient(@Qualifier("loadBalancedRestClientBuilder") RestClient.Builder loadBalancedRestClientBuilder,
+                                     @Qualifier("standardRestClientBuilder") RestClient.Builder standardRestClientBuilder,
+                                     @Value("${core.banking.url}") String coreBankingUrl) {
+        RestClient.Builder builder = usesServiceDiscovery(coreBankingUrl)
+                ? loadBalancedRestClientBuilder
+                : standardRestClientBuilder;
+
+        return builder
                 .baseUrl(coreBankingUrl)
                 .build();
+    }
+
+    private boolean usesServiceDiscovery(String coreBankingUrl) {
+        return !coreBankingUrl.contains("localhost") && !coreBankingUrl.contains("127.0.0.1");
     }
 
     @Bean
