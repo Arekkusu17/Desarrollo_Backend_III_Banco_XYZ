@@ -1,0 +1,117 @@
+{
+  "info": {
+    "name": "Banco XYZ Semana 6",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Config Server - BFF Web",
+      "request": {
+        "method": "GET",
+        "url": "http://localhost:8888/bff-web/default"
+      }
+    },
+    {
+      "name": "Config Server - Core Banking",
+      "request": {
+        "method": "GET",
+        "url": "http://localhost:8888/core-banking/default"
+      }
+    },
+    {
+      "name": "Gateway Web - Dashboard autorizado",
+      "request": {
+        "auth": {
+          "type": "basic",
+          "basic": [
+            {
+              "key": "username",
+              "value": "webuser",
+              "type": "string"
+            },
+            {
+              "key": "password",
+              "value": "web123",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "GET",
+        "url": "http://localhost:8084/gateway/web/cuentas/101/dashboard"
+      }
+    },
+    {
+      "name": "Gateway Mobile - Inicio autorizado",
+      "request": {
+        "auth": {
+          "type": "basic",
+          "basic": [
+            {
+              "key": "username",
+              "value": "mobileuser",
+              "type": "string"
+            },
+            {
+              "key": "password",
+              "value": "mobile123",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "GET",
+        "url": "http://localhost:8084/gateway/mobile/cuentas/101/inicio"
+      }
+    },
+    {
+      "name": "Gateway ATM - Saldo autorizado",
+      "request": {
+        "auth": {
+          "type": "basic",
+          "basic": [
+            {
+              "key": "username",
+              "value": "atmuser",
+              "type": "string"
+            },
+            {
+              "key": "password",
+              "value": "atm123",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "GET",
+        "url": "http://localhost:8084/gateway/atm/cuentas/101/saldo"
+      }
+    },
+    {
+      "name": "Seguridad - Web sin credenciales 401",
+      "request": {
+        "method": "GET",
+        "url": "http://localhost:8084/gateway/web/cuentas/101/dashboard"
+      }
+    },
+    {
+      "name": "Seguridad - Web con usuario Mobile 403",
+      "request": {
+        "auth": {
+          "type": "basic",
+          "basic": [
+            {
+              "key": "username",
+              "value": "mobileuser",
+              "type": "string"
+            },
+            {
+              "key": "password",
+              "value": "mobile123",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "GET",
+        "url": "http://localhost:8084/gateway/web/cuentas/101/dashboard"
+      }
+    }
+  ]
+}
