@@ -1,8 +1,7 @@
+server:
+  port: ${SERVER_PORT:8090}
+
 spring:
-  application:
-    name: risk-service
-  config:
-    import: "optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}"
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     consumer:
@@ -14,9 +13,6 @@ spring:
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
-
-server:
-  port: ${SERVER_PORT:8090}
 
 risk:
   max-approved-amount: ${RISK_MAX_APPROVED_AMOUNT:150000}
