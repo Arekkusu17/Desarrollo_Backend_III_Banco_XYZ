@@ -7,6 +7,7 @@ import java.util.List;
 
 public record WebDashboardResponse(
         String channel,
+        String backendStatus,
         AccountSummary account,
         BigDecimal availableBalance,
         List<AccountMovement> recentMovements,

@@ -1,0 +1,53 @@
+server:
+  port: 8084
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
+  instance:
+    prefer-ip-address: true
+
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${OAUTH_ISSUER_URI:http://auth-server:9000}
+  cloud:
+    gateway:
+      server:
+        webflux:
+          routes:
+            - id: bff-web
+              uri: lb://bff-web
+              predicates:
+                - Path=/gateway/web/**
+              filters:
+                - RewritePath=/gateway/(?<segment>.*), /$\{segment}
+            - id: bff-mobile
+              uri: lb://bff-mobile
+              predicates:
+                - Path=/gateway/mobile/**
+              filters:
+                - RewritePath=/gateway/(?<segment>.*), /$\{segment}
+            - id: bff-atm
+              uri: lb://bff-atm
+              predicates:
+                - Path=/gateway/atm/**
+              filters:
+                - RewritePath=/gateway/(?<segment>.*), /$\{segment}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gateway
+  endpoint:
+    health:
+      show-details: always
+
+info:
+  app:
+    name: API Gateway Banco XYZ
+    description: Punto de entrada Spring Cloud Gateway para Web, Mobile y ATM.
