@@ -1,12 +1,31 @@
-# Banco XYZ BFF Seguro
+# Banco XYZ Spring Cloud Seguro
 
-Proyecto formativo de Semana 5 para implementar el patron **Backend for Frontend (BFF)** sobre el backend bancario construido en la continuidad del proyecto Banco XYZ.
+Proyecto formativo de Semana 6 para evolucionar el sistema Banco XYZ hacia una arquitectura de microservicios con **Spring Cloud Config Server**, **Eureka Service Discovery**, **Spring Cloud Gateway**, tolerancia a fallos con **Resilience4j** y seguridad con **Spring Security**.
 
-El sistema expone un backend central con los datos procesados desde archivos legacy y tres BFF independientes, cada uno adaptado a las necesidades de un canal: web, movil y cajero automatico. La implementacion agrega HTTPS, autenticacion y autorizacion por rol para demostrar acceso seguro por canal.
+El sistema mantiene el backend central con los datos procesados desde archivos legacy y los tres BFF independientes por canal construidos en Semana 5. En esta version, los servicios cargan configuracion centralizada, se registran en Eureka y pueden ser consumidos por un Gateway unico.
 
 ## Objetivo
 
-Implementar una arquitectura BFF que optimice la comunicacion entre distintos clientes del Banco XYZ y el backend central. Cada canal recibe solo la informacion y las operaciones que necesita, reduciendo acoplamiento, payloads innecesarios y reglas duplicadas en los frontends.
+Implementar una arquitectura distribuida para Banco XYZ usando Spring Cloud, manteniendo la separacion por canales BFF e incorporando configuracion centralizada, descubrimiento de servicios, entrada por Gateway, autenticacion/autorizacion y resiliencia ante fallas del backend central.
+
+## Evolucion Semana 6
+
+La actividad pide:
+
+- Configurar un servidor centralizado de configuracion consumido por al menos un microservicio.
+- Habilitar Service Discovery y registrar al menos un microservicio.
+- Implementar un microservicio con tolerancia a fallos y autenticacion.
+
+Este proyecto cumple esos puntos asi:
+
+| Requisito | Implementacion |
+| --- | --- |
+| Config Server | Modulo `config-server` en puerto `8888`, con repositorio nativo en `config-repo`. |
+| Service Discovery | Modulo `discovery-server` con Eureka en puerto `8761`. |
+| Microservicio registrado | `core-banking`, `bff-web`, `bff-mobile`, `bff-atm` y `api-gateway`. |
+| Tolerancia a fallos | Circuit Breaker en `bff-web` para el dashboard cuando `core-banking` no responde. |
+| Seguridad | Spring Security con HTTP Basic y roles por canal, conservando respuestas `401` y `403`. |
+| Gateway | Modulo `api-gateway` en puerto `8084`, enruta hacia los BFF mediante Eureka. |
 
 ## Estrategia BFF
 
@@ -23,11 +42,17 @@ La estrategia seleccionada es **un BFF por canal**. Esta decision permite separa
 ![Arquitectura BFF Banco XYZ](evidencias/00-arquitectura-bff.png)
 
 ```text
-WEB ----HTTPS----> BFF WEB :8081 ----\
-                                      \
-MOBILE -HTTPS----> BFF MOBILE :8082 ---- HTTP interno ----> CORE BANKING :8080
-                                      /
-ATM ----HTTPS----> BFF ATM :8083 ----/
+Cliente / Postman
+       |
+       v
+API Gateway :8084
+       |
+       +--> BFF WEB :8081 ----\
+       +--> BFF MOBILE :8082 --+--> CORE BANKING :8080 --> PostgreSQL
+       +--> BFF ATM :8083 ----/
+
+Config Server :8888 --> configuracion centralizada
+Eureka :8761        --> registro y descubrimiento de servicios
 ```
 
 El flujo de cada BFF mantiene la separacion:
@@ -45,6 +70,9 @@ Desarrollo_Backend_III_Banco_XYZ/
 |-- bff-web/         BFF para banca web
 |-- bff-mobile/      BFF para app movil
 |-- bff-atm/         BFF para cajeros automaticos
+|-- config-server/   Configuracion centralizada Spring Cloud
+|-- discovery-server/ Registro Eureka para descubrimiento de servicios
+|-- api-gateway/     Entrada unica hacia los BFF con Spring Cloud Gateway
 |-- postman/         Coleccion de prueba de APIs
 |-- evidencias/      Capturas de ejecucion para la entrega
 |-- scripts/         Script para certificado HTTPS de laboratorio
@@ -110,14 +138,19 @@ docker compose down -v
 
 Cada Dockerfile usa una etapa Maven para compilar el jar dentro de la imagen y una etapa final `eclipse-temurin:17-jre` para ejecutar el servicio. Por eso no es necesario empaquetar los modulos manualmente antes de usar Compose.
 
-Puertos utilizados:
+Puertos utilizados en Semana 6:
 
 | Servicio | URL |
 | --- | --- |
 | Core Banking | `http://localhost:8080` |
-| BFF Web | `https://localhost:8081` |
-| BFF Mobile | `https://localhost:8082` |
-| BFF ATM | `https://localhost:8083` |
+| BFF Web | `https://localhost:8081` en ejecucion local directa, `http://localhost:8081` con Docker Compose |
+| BFF Mobile | `https://localhost:8082` en ejecucion local directa, `http://localhost:8082` con Docker Compose |
+| BFF ATM | `https://localhost:8083` en ejecucion local directa, `http://localhost:8083` con Docker Compose |
+| API Gateway | `http://localhost:8084` |
+| Config Server | `http://localhost:8888` |
+| Eureka | `http://localhost:8761` |
+
+En Docker Compose los BFF se ejecutan con `BFF_SSL_ENABLED=false` para que el Gateway pueda enrutar internamente por HTTP sin problemas de certificados autofirmados. La seguridad por usuario y rol se mantiene.
 
 ## Usuarios de laboratorio
 
@@ -153,6 +186,60 @@ La coleccion Postman esta disponible en:
 
 ```text
 postman/Banco_XYZ_Semana_5.postman_collection.json
+postman/Banco_XYZ_Semana_6.postman_collection.json
+```
+
+## APIs Spring Cloud Semana 6
+
+### Config Server
+
+```bash
+curl http://localhost:8888/bff-web/default
+curl http://localhost:8888/core-banking/default
+curl http://localhost:8888/api-gateway/default
+```
+
+### Eureka
+
+Abrir en navegador:
+
+```text
+http://localhost:8761
+```
+
+Deberian aparecer, entre otros:
+
+- `CORE-BANKING`
+- `BFF-WEB`
+- `BFF-MOBILE`
+- `BFF-ATM`
+- `API-GATEWAY`
+
+### Gateway
+
+Con Docker Compose:
+
+```bash
+curl -u webuser:web123 http://localhost:8084/gateway/web/cuentas/101/dashboard
+curl -u mobileuser:mobile123 http://localhost:8084/gateway/mobile/cuentas/101/inicio
+curl -u atmuser:atm123 http://localhost:8084/gateway/atm/cuentas/101/saldo
+```
+
+### Resiliencia
+
+El endpoint web tiene Circuit Breaker:
+
+```bash
+curl -u webuser:web123 http://localhost:8084/gateway/web/cuentas/101/dashboard
+```
+
+Si `core-banking` no esta disponible, `bff-web` responde de forma degradada con:
+
+```json
+{
+  "channel": "WEB",
+  "backendStatus": "CORE_BANKING_NO_DISPONIBLE_CIRCUIT_BREAKER"
+}
 ```
 
 ## API del core bancario
@@ -176,6 +263,12 @@ curl "http://localhost:8080/api/rechazos?limit=5"
 curl -k -u webuser:web123 https://localhost:8081/web/cuentas/101/dashboard
 ```
 
+Con Docker Compose, usar HTTP porque el Gateway enruta por HTTP interno:
+
+```bash
+curl -u webuser:web123 http://localhost:8081/web/cuentas/101/dashboard
+```
+
 Respuesta esperada: dashboard con datos de cuenta, saldo disponible, ultimos movimientos, alertas y secciones visibles para web.
 
 ### BFF Mobile
@@ -184,12 +277,20 @@ Respuesta esperada: dashboard con datos de cuenta, saldo disponible, ultimos mov
 curl -k -u mobileuser:mobile123 https://localhost:8082/mobile/cuentas/101/inicio
 ```
 
+```bash
+curl -u mobileuser:mobile123 http://localhost:8082/mobile/cuentas/101/inicio
+```
+
 Respuesta esperada: resumen liviano con saldo, datos principales de cuenta, ultimos movimientos y acciones rapidas.
 
 ### BFF ATM
 
 ```bash
 curl -k -u atmuser:atm123 https://localhost:8083/atm/cuentas/101/saldo
+```
+
+```bash
+curl -u atmuser:atm123 http://localhost:8083/atm/cuentas/101/saldo
 ```
 
 ```bash
