@@ -1,4 +1,25 @@
 services:
+  kafka:
+    image: apache/kafka:3.9.1
+    container_name: banco-xyz-kafka
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: INTERNAL://:9092,EXTERNAL://:29092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://localhost:29092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_NUM_PARTITIONS: 3
+
   postgres:
     image: postgres:16-alpine
     container_name: banco-xyz-postgres
@@ -16,20 +37,69 @@ services:
       timeout: 5s
       retries: 10
 
+  config-server:
+    build:
+      context: .
+      dockerfile: config-server/Dockerfile
+    container_name: banco-xyz-config-server
+    ports:
+      - "8888:8888"
+
+  discovery-server:
+    build:
+      context: .
+      dockerfile: discovery-server/Dockerfile
+    container_name: banco-xyz-discovery-server
+    ports:
+      - "8761:8761"
+    depends_on:
+      - config-server
+
+  auth-server:
+    build:
+      context: .
+      dockerfile: auth-server/Dockerfile
+    container_name: banco-xyz-auth-server
+    environment:
+      CONFIG_SERVER_URL: http://config-server:8888
+      EUREKA_URL: http://discovery-server:8761/eureka/
+      OAUTH_ISSUER: http://auth-server:9000
+      OAUTH_DEMO_SECRET: demo-secret
+      OAUTH_BFF_WEB_SECRET: bff-web-secret
+      OAUTH_BFF_MOBILE_SECRET: bff-mobile-secret
+      OAUTH_BFF_ATM_SECRET: bff-atm-secret
+    ports:
+      - "${AUTH_SERVER_PORT:-9000}:9000"
+    depends_on:
+      - config-server
+      - discovery-server
+
   core-banking:
     build:
       context: .
       dockerfile: core-banking/Dockerfile
     container_name: banco-xyz-core-banking
     environment:
+      CONFIG_SERVER_URL: http://config-server:8888
+      EUREKA_URL: http://discovery-server:8761/eureka/
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/banco_xyz
       SPRING_DATASOURCE_USERNAME: banco
       SPRING_DATASOURCE_PASSWORD: banco
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      OAUTH_ISSUER_URI: http://auth-server:9000
     ports:
       - "8080:8080"
     depends_on:
+      kafka:
+        condition: service_started
       postgres:
         condition: service_healthy
+      config-server:
+        condition: service_started
+      discovery-server:
+        condition: service_started
+      auth-server:
+        condition: service_started
 
   bff-web:
     build:
@@ -37,14 +107,20 @@ services:
       dockerfile: bff-web/Dockerfile
     container_name: banco-xyz-bff-web
     environment:
-      CORE_BANKING_URL: http://core-banking:8080
-      WEB_PASSWORD: web123
-      MOBILE_PASSWORD: mobile123
-      ATM_PASSWORD: atm123
+      CONFIG_SERVER_URL: http://config-server:8888
+      EUREKA_URL: http://discovery-server:8761/eureka/
+      CORE_BANKING_URL: http://core-banking
+      BFF_SSL_ENABLED: "false"
+      OAUTH_ISSUER_URI: http://auth-server:9000
+      OAUTH_TOKEN_URL: http://auth-server:9000/oauth2/token
+      OAUTH_CLIENT_ID: bff-web
+      OAUTH_CLIENT_SECRET: bff-web-secret
     ports:
       - "8081:8081"
     depends_on:
       - core-banking
+      - discovery-server
+      - auth-server
 
   bff-mobile:
     build:
@@ -52,14 +128,20 @@ services:
       dockerfile: bff-mobile/Dockerfile
     container_name: banco-xyz-bff-mobile
     environment:
-      CORE_BANKING_URL: http://core-banking:8080
-      WEB_PASSWORD: web123
-      MOBILE_PASSWORD: mobile123
-      ATM_PASSWORD: atm123
+      CONFIG_SERVER_URL: http://config-server:8888
+      EUREKA_URL: http://discovery-server:8761/eureka/
+      CORE_BANKING_URL: http://core-banking
+      BFF_SSL_ENABLED: "false"
+      OAUTH_ISSUER_URI: http://auth-server:9000
+      OAUTH_TOKEN_URL: http://auth-server:9000/oauth2/token
+      OAUTH_CLIENT_ID: bff-mobile
+      OAUTH_CLIENT_SECRET: bff-mobile-secret
     ports:
       - "8082:8082"
     depends_on:
       - core-banking
+      - discovery-server
+      - auth-server
 
   bff-atm:
     build:
@@ -67,14 +149,78 @@ services:
       dockerfile: bff-atm/Dockerfile
     container_name: banco-xyz-bff-atm
     environment:
-      CORE_BANKING_URL: http://core-banking:8080
-      WEB_PASSWORD: web123
-      MOBILE_PASSWORD: mobile123
-      ATM_PASSWORD: atm123
+      CONFIG_SERVER_URL: http://config-server:8888
+      EUREKA_URL: http://discovery-server:8761/eureka/
+      CORE_BANKING_URL: http://core-banking
+      BFF_SSL_ENABLED: "false"
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      OAUTH_ISSUER_URI: http://auth-server:9000
+      OAUTH_TOKEN_URL: http://auth-server:9000/oauth2/token
+      OAUTH_CLIENT_ID: bff-atm
+      OAUTH_CLIENT_SECRET: bff-atm-secret
     ports:
       - "8083:8083"
     depends_on:
+      - kafka
       - core-banking
+      - discovery-server
+      - auth-server
+
+  risk-service:
+    build:
+      context: .
+      dockerfile: risk-service/Dockerfile
+    container_name: banco-xyz-risk-service
+    environment:
+      CONFIG_SERVER_URL: http://config-server:8888
+      EUREKA_URL: http://discovery-server:8761/eureka/
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      OAUTH_ISSUER_URI: http://auth-server:9000
+    ports:
+      - "8090:8090"
+    depends_on:
+      - kafka
+      - config-server
+      - discovery-server
+      - auth-server
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: notification-service/Dockerfile
+    container_name: banco-xyz-notification-service
+    environment:
+      CONFIG_SERVER_URL: http://config-server:8888
+      EUREKA_URL: http://discovery-server:8761/eureka/
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      INSTANCE_ID: notification-1
+    ports:
+      - "8085:8085"
+    depends_on:
+      - kafka
+      - config-server
+      - discovery-server
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: api-gateway/Dockerfile
+    container_name: banco-xyz-api-gateway
+    environment:
+      CONFIG_SERVER_URL: http://config-server:8888
+      EUREKA_URL: http://discovery-server:8761/eureka/
+      OAUTH_ISSUER_URI: http://auth-server:9000
+    ports:
+      - "8084:8084"
+    depends_on:
+      - config-server
+      - discovery-server
+      - auth-server
+      - bff-web
+      - bff-mobile
+      - bff-atm
+      - risk-service
+      - notification-service
 
 volumes:
   banco_xyz_data:

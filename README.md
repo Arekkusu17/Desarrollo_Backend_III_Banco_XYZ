@@ -1,258 +1,279 @@
-# Banco XYZ BFF Seguro
+# Banco XYZ - Semana 8
 
-Proyecto formativo de Semana 5 para implementar el patron **Backend for Frontend (BFF)** sobre el backend bancario construido en la continuidad del proyecto Banco XYZ.
+Proyecto final de Desarrollo Backend III para implementar una arquitectura de microservicios segura, resiliente y orientada a eventos con Spring Cloud.
 
-El sistema expone un backend central con los datos procesados desde archivos legacy y tres BFF independientes, cada uno adaptado a las necesidades de un canal: web, movil y cajero automatico. La implementacion agrega HTTPS, autenticacion y autorizacion por rol para demostrar acceso seguro por canal.
+La solucion incorpora OAuth2.0/JWT, Docker, Docker Compose, Resilience4j y Kafka sobre el sistema Banco XYZ. El flujo principal validado es el retiro por canal ATM, procesado de forma asincrona mediante eventos y compensacion ante rechazo de riesgo.
 
 ## Objetivo
 
-Implementar una arquitectura BFF que optimice la comunicacion entre distintos clientes del Banco XYZ y el backend central. Cada canal recibe solo la informacion y las operaciones que necesita, reduciendo acoplamiento, payloads innecesarios y reglas duplicadas en los frontends.
+Preparar los microservicios de Banco XYZ para un entorno cloud resiliente y seguro:
 
-## Estrategia BFF
-
-La estrategia seleccionada es **un BFF por canal**. Esta decision permite separar contratos, respuestas y validaciones segun el tipo de cliente.
-
-| Canal | BFF | Proposito |
-| --- | --- | --- |
-| Web | `bff-web` | Entregar una vista completa para navegadores, con saldo, datos de cuenta, movimientos y alertas operativas. |
-| Mobile | `bff-mobile` | Entregar una respuesta liviana con datos esenciales, optimizada para menor consumo y carga rapida. |
-| Cajero automatico | `bff-atm` | Entregar operaciones acotadas y seguras para consulta de saldo y retiro simulado. |
+- Proteger servicios con OAuth2.0 y JWT.
+- Dockerizar todos los microservicios.
+- Orquestar la solucion completa con Docker Compose.
+- Mantener tolerancia a fallos con Resilience4j.
+- Integrar mensajeria asincrona con Kafka.
+- Documentar ejecucion, pruebas y evidencias.
 
 ## Arquitectura
 
-![Arquitectura BFF Banco XYZ](evidencias/00-arquitectura-bff.png)
+![Arquitectura Banco XYZ Semana 8](evidencias/00-arquitectura.png)
 
 ```text
-WEB ----HTTPS----> BFF WEB :8081 ----\
-                                      \
-MOBILE -HTTPS----> BFF MOBILE :8082 ---- HTTP interno ----> CORE BANKING :8080
-                                      /
-ATM ----HTTPS----> BFF ATM :8083 ----/
+Cliente / Postman
+       |
+       v
+API Gateway :8084
+       |
+       +--> BFF Web :8081
+       +--> BFF Mobile :8082
+       +--> BFF ATM :8083
+                |
+                v
+          Core Banking :8080
+                |
+                v
+           PostgreSQL :5432
+
+Auth Server :9000       OAuth2 + JWT + JWK
+Config Server :8888     configuracion centralizada
+Eureka :8761            service discovery
+Kafka :9092             eventos de retiro y compensacion
+Risk Service :8090      evaluacion de riesgo + Resilience4j
+Notification :8085      notificacion y auditoria de eventos
 ```
 
-El flujo de cada BFF mantiene la separacion:
+## Componentes
 
-```text
-Controller -> Service -> Client -> Core Banking
-```
-
-## Estructura del proyecto
-
-```text
-Desarrollo_Backend_III_Banco_XYZ/
-|-- core-banking/    Backend central con Spring Batch, PostgreSQL y API REST
-|-- bff-common/      RestClient compartido y seguridad comun de los BFF
-|-- bff-web/         BFF para banca web
-|-- bff-mobile/      BFF para app movil
-|-- bff-atm/         BFF para cajeros automaticos
-|-- postman/         Coleccion de prueba de APIs
-|-- evidencias/      Capturas de ejecucion para la entrega
-|-- scripts/         Script para certificado HTTPS de laboratorio
-|-- docker-compose.yml
-|-- pom.xml
-```
-
-Cada modulo BFF mantiene su logica propia en paquetes `controller`, `model`, `service` y `client`. El modulo `bff-common` concentra la configuracion tecnica reutilizable: `RestClient`, usuarios de laboratorio, autenticacion HTTP Basic, autorizacion por rol y respuestas `401/403`.
+| Modulo | Proposito |
+| --- | --- |
+| `auth-server` | Servidor OAuth2.0 con flujo `client_credentials`, emision JWT y JWK Set. |
+| `api-gateway` | Entrada unica a los BFF, validando bearer token y scopes. |
+| `bff-web` | Canal Web para dashboard de cuenta. |
+| `bff-mobile` | Canal Mobile para vista liviana de cuenta. |
+| `bff-atm` | Canal ATM para saldo, retiro y seguimiento de transacciones. |
+| `core-banking` | Backend central, API bancaria, batch legacy, PostgreSQL y reserva/liberacion de fondos. |
+| `risk-service` | Evaluacion de riesgo de retiros y fallback con Resilience4j. |
+| `notification-service` | Consumidor de eventos finales y auditoria. |
+| `shared-events` | Contratos compartidos para eventos Kafka. |
+| `config-server` | Configuracion centralizada para microservicios. |
+| `discovery-server` | Registro Eureka para descubrimiento de servicios. |
 
 ## Requisitos
 
-- Java 17 o superior.
+- Java 21.
 - Docker y Docker Compose.
-- Maven Wrapper incluido en el proyecto.
-- `keytool` disponible en el JDK.
+- Maven Wrapper incluido.
 - Postman para ejecutar la coleccion de validacion.
-
-## Certificado HTTPS
-
-Los BFF usan HTTPS con un certificado autofirmado de laboratorio. Para generarlo:
-
-```bash
-./scripts/generar-certificados.sh
-```
-
-El script copia `keystore.p12` a:
-
-```text
-bff-web/src/main/resources/
-bff-mobile/src/main/resources/
-bff-atm/src/main/resources/
-```
-
-La clave local del keystore es `changeit`. Es una credencial didactica y no debe usarse en produccion.
 
 ## Ejecucion
 
-Desde la raiz del proyecto, levantar todos los servicios con Docker Compose:
+Levantar la solucion completa:
 
 ```bash
 docker compose up -d --build
 ```
 
-El comando construye las imagenes cuando existen cambios y deja ejecutando PostgreSQL, Core Banking y los tres BFF.
+Si el puerto `9000` esta ocupado, publicar `auth-server` en otro puerto del host:
 
-Para revisar el estado de los contenedores:
+```bash
+AUTH_SERVER_PORT=9001 docker compose up -d --build
+export AUTH_SERVER_PORT=9001
+```
+
+La variable `AUTH_SERVER_PORT` solo cambia el puerto expuesto en el host. Dentro de Docker, los servicios siguen usando `http://auth-server:9000`.
+
+Revisar contenedores:
 
 ```bash
 docker compose ps
 ```
 
-Para detener el ambiente:
+Detener el ambiente:
 
 ```bash
 docker compose down
 ```
 
-Si se requiere eliminar tambien los datos locales de PostgreSQL:
+Detener y eliminar datos locales de PostgreSQL:
 
 ```bash
 docker compose down -v
 ```
 
-Cada Dockerfile usa una etapa Maven para compilar el jar dentro de la imagen y una etapa final `eclipse-temurin:17-jre` para ejecutar el servicio. Por eso no es necesario empaquetar los modulos manualmente antes de usar Compose.
-
-Puertos utilizados:
+## Puertos
 
 | Servicio | URL |
 | --- | --- |
+| Auth Server | `http://localhost:${AUTH_SERVER_PORT:-9000}` |
+| API Gateway | `http://localhost:8084` |
+| BFF Web | `http://localhost:8081` |
+| BFF Mobile | `http://localhost:8082` |
+| BFF ATM | `http://localhost:8083` |
 | Core Banking | `http://localhost:8080` |
-| BFF Web | `https://localhost:8081` |
-| BFF Mobile | `https://localhost:8082` |
-| BFF ATM | `https://localhost:8083` |
+| Risk Service | `http://localhost:8090` |
+| Notification Service | `http://localhost:8085` |
+| Config Server | `http://localhost:8888` |
+| Eureka | `http://localhost:8761` |
+| PostgreSQL | `localhost:5432` |
+| Kafka | `localhost:29092` para clientes locales, `kafka:9092` dentro de Docker |
 
-## Usuarios de laboratorio
+## Seguridad OAuth2
 
-| Usuario | Password | Rol | Canal |
-| --- | --- | --- | --- |
-| `webuser` | `web123` | `WEB` | Web |
-| `mobileuser` | `mobile123` | `MOBILE` | Mobile |
-| `atmuser` | `atm123` | `ATM` | Cajero automatico |
+`auth-server` emite JWT mediante `client_credentials`. Gateway, BFFs, Core Banking y Risk Service validan bearer tokens.
 
-Las claves se pueden reemplazar con variables de entorno: `WEB_PASSWORD`, `MOBILE_PASSWORD` y `ATM_PASSWORD`.
-
-## Seguridad
-
-Cada BFF publica sus endpoints por HTTPS y valida credenciales con Spring Security. La autenticacion usa HTTP Basic y la autorizacion se define por rol:
-
-| BFF | Ruta protegida | Rol requerido |
+| Cliente | Secreto | Scopes |
 | --- | --- | --- |
-| `bff-web` | `/web/**` | `WEB` |
-| `bff-mobile` | `/mobile/**` | `MOBILE` |
-| `bff-atm` | `/atm/**` | `ATM` |
+| `banco-xyz-demo` | `demo-secret` | `web.read`, `mobile.read`, `atm.read`, `atm.write`, `risk.read` |
+| `bff-web` | `bff-web-secret` | `core.read` |
+| `bff-mobile` | `bff-mobile-secret` | `core.read` |
+| `bff-atm` | `bff-atm-secret` | `core.read`, `core.write` |
 
-Sin credenciales o con credenciales invalidas, el BFF responde `401 Unauthorized`. Con un usuario valido pero de otro canal, responde `403 Forbidden`.
+Rutas principales protegidas:
+
+| Componente | Ruta | Scope |
+| --- | --- | --- |
+| `api-gateway` | `/gateway/web/**` | `web.read` |
+| `api-gateway` | `/gateway/mobile/**` | `mobile.read` |
+| `api-gateway` | `/gateway/atm/**` | `atm.read` o `atm.write` |
+| `core-banking` | `/api/**` | `core.read` o `core.write` |
+| `risk-service` | `/api/risk/admin/**` | `risk.read` |
+
+Obtener token de laboratorio:
+
+```bash
+curl -u banco-xyz-demo:demo-secret \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  --data-urlencode "grant_type=client_credentials" \
+  --data-urlencode "scope=web.read mobile.read atm.read atm.write risk.read" \
+  http://localhost:${AUTH_SERVER_PORT:-9000}/oauth2/token
+```
+
+Usar token:
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  http://localhost:8084/gateway/web/cuentas/101/dashboard
+```
+
+Resultados esperados:
+
+| Caso | Resultado |
+| --- | --- |
+| Sin bearer token | `401 Unauthorized` |
+| Token valido sin scope requerido | `403 Forbidden` |
+| Token valido con scope requerido | `200 OK` |
+
+## Flujo ATM Asincrono
+
+El retiro ATM se procesa como saga coreografiada con Kafka.
+
+```text
+bff-atm
+  -> withdrawal.requested
+core-banking
+  -> funds.reserved
+risk-service
+  -> risk.approved / risk.rejected
+bff-atm
+  -> withdrawal.confirmed / withdrawal.cancelled
+notification-service
+  -> notificacion y auditoria
+```
+
+Si el riesgo rechaza una transaccion o se activa el fallback de Resilience4j, `bff-atm` publica `funds.release-requested` y `core-banking` responde con `funds.released`.
 
 ## Pruebas
 
-Ejecutar la suite completa:
+Ejecutar pruebas automatizadas:
 
 ```bash
 ./mvnw test
 ```
 
-La coleccion Postman esta disponible en:
+Coleccion Postman:
 
 ```text
-postman/Banco_XYZ_Semana_5.postman_collection.json
+postman/Banco_XYZ_Semana_8.postman_collection.json
 ```
 
-## API del core bancario
+Para usarla:
 
-```bash
-curl http://localhost:8080/api/estado
-curl http://localhost:8080/api/cuentas
-curl http://localhost:8080/api/cuentas/101
-curl http://localhost:8080/api/cuentas/101/resumen
-curl http://localhost:8080/api/cuentas/101/saldo
-curl "http://localhost:8080/api/cuentas/101/movimientos?limit=5"
-curl "http://localhost:8080/api/transacciones?onlyAnomalies=true&limit=5"
-curl "http://localhost:8080/api/rechazos?limit=5"
-```
+1. Levantar Docker Compose.
+2. Importar la coleccion en Postman.
+3. Ajustar `authBaseUrl` si se uso `AUTH_SERVER_PORT=9001`.
+4. Ejecutar la coleccion completa con Collection Runner.
 
-## APIs BFF
+La coleccion valida:
 
-### BFF Web
+- Health del Gateway.
+- Emision de token OAuth2.
+- Respuesta `401` sin token.
+- Respuesta `403` con scope incorrecto.
+- Acceso autorizado por Gateway.
+- Retiro ATM `PENDING -> CONFIRMED`.
+- Rechazo por falla simulada de riesgo.
+- Compensacion y restauracion de `risk-service`.
 
-```bash
-curl -k -u webuser:web123 https://localhost:8081/web/cuentas/101/dashboard
-```
+## Evidencias
 
-Respuesta esperada: dashboard con datos de cuenta, saldo disponible, ultimos movimientos, alertas y secciones visibles para web.
+Las evidencias oficiales estan en `evidencias/`.
 
-### BFF Mobile
+### 00 - Arquitectura
 
-```bash
-curl -k -u mobileuser:mobile123 https://localhost:8082/mobile/cuentas/101/inicio
-```
+![Arquitectura Semana 8](evidencias/00-arquitectura.png)
 
-Respuesta esperada: resumen liviano con saldo, datos principales de cuenta, ultimos movimientos y acciones rapidas.
+### 01 - Servicios levantados
 
-### BFF ATM
+![Servicios Semana 8](evidencias/01-servicios-levantados.png)
 
-```bash
-curl -k -u atmuser:atm123 https://localhost:8083/atm/cuentas/101/saldo
-```
+### 02 - Pruebas Maven
 
-```bash
-curl -k -u atmuser:atm123 -X POST https://localhost:8083/atm/cuentas/101/retiros \
-  -H "Content-Type: application/json" \
-  -d '{"amount":1000,"pin":"1234"}'
-```
+![Pruebas Maven Semana 8](evidencias/02-mvn-test-success.png)
 
-Respuesta esperada: consulta de saldo o retiro simulado aprobado cuando el monto y el PIN cumplen las reglas del canal.
+### 03 - Token OAuth2
 
-## Validaciones sugeridas
+![Token OAuth2](evidencias/03-token-oauth2.png)
 
-| Validacion | Resultado esperado |
+### 04 - Rechazo sin token
+
+![Rechazo sin token](evidencias/04-rechazo-sin-token.png)
+
+### 05 - Rechazo por scope incorrecto
+
+![Rechazo scope incorrecto](evidencias/05-rechazo-scope-incorrecto.png)
+
+### 06 - Gateway autorizado
+
+![Gateway autorizado](evidencias/06-gateway-autorizado.png)
+
+### 07 - Retiro ATM pendiente
+
+![Retiro ATM pendiente](evidencias/07-retiro-atm-pendiente.png)
+
+### 08 - Retiro ATM confirmado
+
+![Retiro ATM confirmado](evidencias/08-retiro-atm-confirmado.png)
+
+### 09 - Logs Kafka
+
+![Logs Kafka](evidencias/09-logs-kafka.png)
+
+### 10 - Resilience4j
+
+![Resilience4j](evidencias/10-resilience4j.png)
+
+### 11 - Collection Runner Postman
+
+![Coleccion Postman Semana 8](evidencias/11-postman-collection-run.png)
+
+## Checklist de Entrega
+
+| Criterio Semana 8 | Estado |
 | --- | --- |
-| `./mvnw test` | `BUILD SUCCESS` |
-| `GET /api/estado` | `200 OK` |
-| Web sin credenciales | `401 Unauthorized` |
-| Web con `webuser:web123` | `200 OK` |
-| Web con `mobileuser:mobile123` | `403 Forbidden` |
-| Mobile sin credenciales | `401 Unauthorized` |
-| Mobile con `mobileuser:mobile123` | `200 OK` |
-| Mobile con `atmuser:atm123` | `403 Forbidden` |
-| ATM sin credenciales | `401 Unauthorized` |
-| ATM con `atmuser:atm123` | `200 OK` |
-| ATM con `webuser:web123` | `403 Forbidden` |
-| Retiro ATM con usuario, monto y PIN valido | `200 OK` con retiro aprobado |
-
-## Evidencia de ejecucion
-
-Las capturas de `evidencias/` documentan la ejecucion del sistema y la validacion de los endpoints solicitados.
-
-### Servicios levantados
-
-![Servicios levantados](evidencias/01-servicios-levantados.png)
-
-### Pruebas automatizadas
-
-![Pruebas Maven exitosas](evidencias/02-mvn-test-success.png)
-
-### Core bancario
-
-![Core bancario respondiendo](evidencias/03-core-bancario.png)
-
-### BFF Web
-
-![BFF Web autorizado](evidencias/04-bff-web-autorizado.png)
-
-### BFF Mobile
-
-![BFF Mobile autorizado](evidencias/05-bff-mobile-autorizado.png)
-
-### BFF ATM
-
-![BFF ATM saldo autorizado](evidencias/06-bff-atm-saldo-autorizado.png)
-
-![BFF ATM retiro autorizado](evidencias/07-bff-atm-retiro-autorizado.png)
-
-### Seguridad por canal
-
-![Rechazo sin credenciales](evidencias/08-rechazo-sin-credenciales.png)
-
-![Rechazo por rol incorrecto](evidencias/09-rechazo-rol-incorrecto.png)
-
-### Coleccion Postman
-
-![Coleccion Postman ejecutada](evidencias/10-postman-collection-run.png)
+| OAuth2.0 funcional | Cumplido con `auth-server`, JWT, scopes y Resource Servers. |
+| Imagenes Docker para microservicios | Cumplido con Dockerfile por servicio. |
+| Docker Compose funcional | Cumplido con PostgreSQL, Kafka y microservicios orquestados. |
+| Resilience4j | Cumplido en `risk-service` con fallback de rechazo y compensacion. |
+| Kafka o JMS | Cumplido con Kafka y saga de retiro ATM. |
+| Codigo, README y evidencias | Cumplido en repo, README y carpeta `evidencias/`. |
