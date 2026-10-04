@@ -1,0 +1,52 @@
+server:
+  port: 8081
+  ssl:
+    enabled: ${BFF_SSL_ENABLED:true}
+    key-store: ${SSL_KEYSTORE:classpath:keystore.p12}
+    key-store-password: ${SSL_KEYSTORE_PASSWORD:changeit}
+    key-store-type: PKCS12
+    key-alias: bff-local
+
+core:
+  banking:
+    url: ${CORE_BANKING_URL:http://core-banking}
+
+channel:
+  name: Web
+  path-pattern: /web/**
+  role: WEB
+
+security:
+  users:
+    web:
+      password: ${WEB_PASSWORD:web123}
+    mobile:
+      password: ${MOBILE_PASSWORD:mobile123}
+    atm:
+      password: ${ATM_PASSWORD:atm123}
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
+  instance:
+    prefer-ip-address: true
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      coreBanking:
+        sliding-window-size: 5
+        minimum-number-of-calls: 3
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 2
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,circuitbreakers
+  endpoint:
+    health:
+      show-details: always

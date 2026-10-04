@@ -12,6 +12,9 @@
     <description>Proyecto multi-servicio para core bancario y BFF de Banco XYZ.</description>
 
     <modules>
+        <module>config-server</module>
+        <module>discovery-server</module>
+        <module>api-gateway</module>
         <module>core-banking</module>
         <module>bff-common</module>
         <module>bff-web</module>

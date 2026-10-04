@@ -1,0 +1,39 @@
+server:
+  port: 8082
+  ssl:
+    enabled: ${BFF_SSL_ENABLED:true}
+    key-store: ${SSL_KEYSTORE:classpath:keystore.p12}
+    key-store-password: ${SSL_KEYSTORE_PASSWORD:changeit}
+    key-store-type: PKCS12
+    key-alias: bff-local
+
+core:
+  banking:
+    url: ${CORE_BANKING_URL:http://core-banking}
+
+channel:
+  name: Mobile
+  path-pattern: /mobile/**
+  role: MOBILE
+
+security:
+  users:
+    web:
+      password: ${WEB_PASSWORD:web123}
+    mobile:
+      password: ${MOBILE_PASSWORD:mobile123}
+    atm:
+      password: ${ATM_PASSWORD:atm123}
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
+  instance:
+    prefer-ip-address: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
