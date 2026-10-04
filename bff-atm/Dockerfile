@@ -11,6 +11,7 @@ COPY bff-web/pom.xml bff-web/pom.xml
 COPY bff-mobile/pom.xml bff-mobile/pom.xml
 COPY bff-atm/pom.xml bff-atm/pom.xml
 RUN mvn -q -pl bff-atm -am -DskipTests dependency:go-offline
+COPY shared-events/src shared-events/src
 COPY bff-common/src bff-common/src
 COPY bff-atm/src bff-atm/src
 RUN mvn -q -pl bff-atm -am -DskipTests package
