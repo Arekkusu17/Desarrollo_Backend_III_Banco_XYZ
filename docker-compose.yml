@@ -16,12 +16,32 @@ services:
       timeout: 5s
       retries: 10
 
+  config-server:
+    build:
+      context: .
+      dockerfile: config-server/Dockerfile
+    container_name: banco-xyz-config-server
+    ports:
+      - "8888:8888"
+
+  discovery-server:
+    build:
+      context: .
+      dockerfile: discovery-server/Dockerfile
+    container_name: banco-xyz-discovery-server
+    ports:
+      - "8761:8761"
+    depends_on:
+      - config-server
+
   core-banking:
     build:
       context: .
       dockerfile: core-banking/Dockerfile
     container_name: banco-xyz-core-banking
     environment:
+      CONFIG_SERVER_URL: http://config-server:8888
+      EUREKA_URL: http://discovery-server:8761/eureka/
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/banco_xyz
       SPRING_DATASOURCE_USERNAME: banco
       SPRING_DATASOURCE_PASSWORD: banco
@@ -30,6 +50,10 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      config-server:
+        condition: service_started
+      discovery-server:
+        condition: service_started
 
   bff-web:
     build:
@@ -37,7 +61,10 @@ services:
       dockerfile: bff-web/Dockerfile
     container_name: banco-xyz-bff-web
     environment:
-      CORE_BANKING_URL: http://core-banking:8080
+      CONFIG_SERVER_URL: http://config-server:8888
+      EUREKA_URL: http://discovery-server:8761/eureka/
+      CORE_BANKING_URL: http://core-banking
+      BFF_SSL_ENABLED: "false"
       WEB_PASSWORD: web123
       MOBILE_PASSWORD: mobile123
       ATM_PASSWORD: atm123
@@ -45,6 +72,7 @@ services:
       - "8081:8081"
     depends_on:
       - core-banking
+      - discovery-server
 
   bff-mobile:
     build:
@@ -52,7 +80,10 @@ services:
       dockerfile: bff-mobile/Dockerfile
     container_name: banco-xyz-bff-mobile
     environment:
-      CORE_BANKING_URL: http://core-banking:8080
+      CONFIG_SERVER_URL: http://config-server:8888
+      EUREKA_URL: http://discovery-server:8761/eureka/
+      CORE_BANKING_URL: http://core-banking
+      BFF_SSL_ENABLED: "false"
       WEB_PASSWORD: web123
       MOBILE_PASSWORD: mobile123
       ATM_PASSWORD: atm123
@@ -60,6 +91,7 @@ services:
       - "8082:8082"
     depends_on:
       - core-banking
+      - discovery-server
 
   bff-atm:
     build:
@@ -67,7 +99,10 @@ services:
       dockerfile: bff-atm/Dockerfile
     container_name: banco-xyz-bff-atm
     environment:
-      CORE_BANKING_URL: http://core-banking:8080
+      CONFIG_SERVER_URL: http://config-server:8888
+      EUREKA_URL: http://discovery-server:8761/eureka/
+      CORE_BANKING_URL: http://core-banking
+      BFF_SSL_ENABLED: "false"
       WEB_PASSWORD: web123
       MOBILE_PASSWORD: mobile123
       ATM_PASSWORD: atm123
@@ -75,6 +110,24 @@ services:
       - "8083:8083"
     depends_on:
       - core-banking
+      - discovery-server
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: api-gateway/Dockerfile
+    container_name: banco-xyz-api-gateway
+    environment:
+      CONFIG_SERVER_URL: http://config-server:8888
+      EUREKA_URL: http://discovery-server:8761/eureka/
+    ports:
+      - "8084:8084"
+    depends_on:
+      - config-server
+      - discovery-server
+      - bff-web
+      - bff-mobile
+      - bff-atm
 
 volumes:
   banco_xyz_data:
