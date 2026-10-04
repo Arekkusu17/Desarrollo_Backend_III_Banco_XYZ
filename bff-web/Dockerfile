@@ -1,4 +1,4 @@
-FROM maven:3.9.9-eclipse-temurin-17 AS build
+FROM maven:3.9.9-eclipse-temurin-21 AS build
 WORKDIR /app
 COPY pom.xml .
 COPY config-server/pom.xml config-server/pom.xml
@@ -14,7 +14,7 @@ COPY bff-common/src bff-common/src
 COPY bff-web/src bff-web/src
 RUN mvn -q -pl bff-web -am -DskipTests package
 
-FROM eclipse-temurin:17-jre
+FROM eclipse-temurin:21-jre
 WORKDIR /app
 COPY --from=build /app/bff-web/target/*.jar app.jar
 EXPOSE 8081

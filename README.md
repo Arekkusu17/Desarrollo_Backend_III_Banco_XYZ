@@ -84,7 +84,7 @@ Cada modulo BFF mantiene su logica propia en paquetes `controller`, `model`, `se
 
 ## Requisitos
 
-- Java 17 o superior.
+- Java 21.
 - Docker y Docker Compose.
 - Maven Wrapper incluido en el proyecto.
 - `keytool` disponible en el JDK.
@@ -136,7 +136,7 @@ Si se requiere eliminar tambien los datos locales de PostgreSQL:
 docker compose down -v
 ```
 
-Cada Dockerfile usa una etapa Maven para compilar el jar dentro de la imagen y una etapa final `eclipse-temurin:17-jre` para ejecutar el servicio. Por eso no es necesario empaquetar los modulos manualmente antes de usar Compose.
+Cada Dockerfile usa una etapa Maven con Java 21 para compilar el jar dentro de la imagen y una etapa final `eclipse-temurin:21-jre` para ejecutar el servicio. Por eso no es necesario empaquetar los modulos manualmente antes de usar Compose.
 
 Puertos utilizados en Semana 6:
 
