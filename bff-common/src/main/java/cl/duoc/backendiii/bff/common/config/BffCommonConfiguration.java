@@ -16,7 +16,10 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
+
+import java.time.Duration;
 
 @Configuration
 @EnableConfigurationProperties(ChannelAuthProperties.class)
@@ -42,8 +45,16 @@ public class BffCommonConfiguration {
                 : standardRestClientBuilder;
 
         return builder
+                .requestFactory(coreBankingRequestFactory())
                 .baseUrl(coreBankingUrl)
                 .build();
+    }
+
+    private SimpleClientHttpRequestFactory coreBankingRequestFactory() {
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(Duration.ofSeconds(2));
+        requestFactory.setReadTimeout(Duration.ofSeconds(3));
+        return requestFactory;
     }
 
     private boolean usesServiceDiscovery(String coreBankingUrl) {
