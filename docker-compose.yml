@@ -70,7 +70,8 @@ services:
     ports:
       - "8080:8080"
     depends_on:
-      - kafka
+      kafka:
+        condition: service_started
       postgres:
         condition: service_healthy
       config-server:
