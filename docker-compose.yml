@@ -55,6 +55,25 @@ services:
     depends_on:
       - config-server
 
+  auth-server:
+    build:
+      context: .
+      dockerfile: auth-server/Dockerfile
+    container_name: banco-xyz-auth-server
+    environment:
+      CONFIG_SERVER_URL: http://config-server:8888
+      EUREKA_URL: http://discovery-server:8761/eureka/
+      OAUTH_ISSUER: http://auth-server:9000
+      OAUTH_DEMO_SECRET: demo-secret
+      OAUTH_BFF_WEB_SECRET: bff-web-secret
+      OAUTH_BFF_MOBILE_SECRET: bff-mobile-secret
+      OAUTH_BFF_ATM_SECRET: bff-atm-secret
+    ports:
+      - "${AUTH_SERVER_PORT:-9000}:9000"
+    depends_on:
+      - config-server
+      - discovery-server
+
   core-banking:
     build:
       context: .
@@ -67,6 +86,7 @@ services:
       SPRING_DATASOURCE_USERNAME: banco
       SPRING_DATASOURCE_PASSWORD: banco
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      OAUTH_ISSUER_URI: http://auth-server:9000
     ports:
       - "8080:8080"
     depends_on:
@@ -77,6 +97,8 @@ services:
       config-server:
         condition: service_started
       discovery-server:
+        condition: service_started
+      auth-server:
         condition: service_started
 
   bff-web:
@@ -89,14 +111,16 @@ services:
       EUREKA_URL: http://discovery-server:8761/eureka/
       CORE_BANKING_URL: http://core-banking
       BFF_SSL_ENABLED: "false"
-      WEB_PASSWORD: web123
-      MOBILE_PASSWORD: mobile123
-      ATM_PASSWORD: atm123
+      OAUTH_ISSUER_URI: http://auth-server:9000
+      OAUTH_TOKEN_URL: http://auth-server:9000/oauth2/token
+      OAUTH_CLIENT_ID: bff-web
+      OAUTH_CLIENT_SECRET: bff-web-secret
     ports:
       - "8081:8081"
     depends_on:
       - core-banking
       - discovery-server
+      - auth-server
 
   bff-mobile:
     build:
@@ -108,14 +132,16 @@ services:
       EUREKA_URL: http://discovery-server:8761/eureka/
       CORE_BANKING_URL: http://core-banking
       BFF_SSL_ENABLED: "false"
-      WEB_PASSWORD: web123
-      MOBILE_PASSWORD: mobile123
-      ATM_PASSWORD: atm123
+      OAUTH_ISSUER_URI: http://auth-server:9000
+      OAUTH_TOKEN_URL: http://auth-server:9000/oauth2/token
+      OAUTH_CLIENT_ID: bff-mobile
+      OAUTH_CLIENT_SECRET: bff-mobile-secret
     ports:
       - "8082:8082"
     depends_on:
       - core-banking
       - discovery-server
+      - auth-server
 
   bff-atm:
     build:
@@ -127,16 +153,18 @@ services:
       EUREKA_URL: http://discovery-server:8761/eureka/
       CORE_BANKING_URL: http://core-banking
       BFF_SSL_ENABLED: "false"
-      WEB_PASSWORD: web123
-      MOBILE_PASSWORD: mobile123
-      ATM_PASSWORD: atm123
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      OAUTH_ISSUER_URI: http://auth-server:9000
+      OAUTH_TOKEN_URL: http://auth-server:9000/oauth2/token
+      OAUTH_CLIENT_ID: bff-atm
+      OAUTH_CLIENT_SECRET: bff-atm-secret
     ports:
       - "8083:8083"
     depends_on:
       - kafka
       - core-banking
       - discovery-server
+      - auth-server
 
   risk-service:
     build:
@@ -147,12 +175,14 @@ services:
       CONFIG_SERVER_URL: http://config-server:8888
       EUREKA_URL: http://discovery-server:8761/eureka/
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      OAUTH_ISSUER_URI: http://auth-server:9000
     ports:
       - "8090:8090"
     depends_on:
       - kafka
       - config-server
       - discovery-server
+      - auth-server
 
   notification-service:
     build:
@@ -179,11 +209,13 @@ services:
     environment:
       CONFIG_SERVER_URL: http://config-server:8888
       EUREKA_URL: http://discovery-server:8761/eureka/
+      OAUTH_ISSUER_URI: http://auth-server:9000
     ports:
       - "8084:8084"
     depends_on:
       - config-server
       - discovery-server
+      - auth-server
       - bff-web
       - bff-mobile
       - bff-atm

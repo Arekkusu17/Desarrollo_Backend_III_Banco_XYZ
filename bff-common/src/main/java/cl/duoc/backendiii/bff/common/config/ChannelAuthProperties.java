@@ -6,6 +6,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record ChannelAuthProperties(
         String name,
         String pathPattern,
-        String role
+        String scope
 ) {
 }

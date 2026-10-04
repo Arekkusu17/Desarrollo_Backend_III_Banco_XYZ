@@ -3,6 +3,11 @@ spring:
     name: risk-service
   config:
     import: "optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}"
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${OAUTH_ISSUER_URI:http://localhost:9000}
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     consumer:

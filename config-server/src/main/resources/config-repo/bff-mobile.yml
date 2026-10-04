@@ -14,16 +14,21 @@ core:
 channel:
   name: Mobile
   path-pattern: /mobile/**
-  role: MOBILE
+  scope: mobile.read
 
-security:
-  users:
-    web:
-      password: ${WEB_PASSWORD:web123}
-    mobile:
-      password: ${MOBILE_PASSWORD:mobile123}
-    atm:
-      password: ${ATM_PASSWORD:atm123}
+app:
+  oauth:
+    token-url: ${OAUTH_TOKEN_URL:http://auth-server:9000/oauth2/token}
+    client-id: ${OAUTH_CLIENT_ID:bff-mobile}
+    client-secret: ${OAUTH_CLIENT_SECRET:bff-mobile-secret}
+    core-scope: core.read
+
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${OAUTH_ISSUER_URI:http://auth-server:9000}
 
 eureka:
   client:

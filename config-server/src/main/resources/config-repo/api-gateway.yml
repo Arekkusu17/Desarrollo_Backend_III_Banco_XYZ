@@ -9,27 +9,34 @@ eureka:
     prefer-ip-address: true
 
 spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${OAUTH_ISSUER_URI:http://auth-server:9000}
   cloud:
     gateway:
-      routes:
-        - id: bff-web
-          uri: lb://bff-web
-          predicates:
-            - Path=/gateway/web/**
-          filters:
-            - RewritePath=/gateway/(?<segment>.*), /$\{segment}
-        - id: bff-mobile
-          uri: lb://bff-mobile
-          predicates:
-            - Path=/gateway/mobile/**
-          filters:
-            - RewritePath=/gateway/(?<segment>.*), /$\{segment}
-        - id: bff-atm
-          uri: lb://bff-atm
-          predicates:
-            - Path=/gateway/atm/**
-          filters:
-            - RewritePath=/gateway/(?<segment>.*), /$\{segment}
+      server:
+        webflux:
+          routes:
+            - id: bff-web
+              uri: lb://bff-web
+              predicates:
+                - Path=/gateway/web/**
+              filters:
+                - RewritePath=/gateway/(?<segment>.*), /$\{segment}
+            - id: bff-mobile
+              uri: lb://bff-mobile
+              predicates:
+                - Path=/gateway/mobile/**
+              filters:
+                - RewritePath=/gateway/(?<segment>.*), /$\{segment}
+            - id: bff-atm
+              uri: lb://bff-atm
+              predicates:
+                - Path=/gateway/atm/**
+              filters:
+                - RewritePath=/gateway/(?<segment>.*), /$\{segment}
 
 management:
   endpoints:

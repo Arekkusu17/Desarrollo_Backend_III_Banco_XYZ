@@ -7,15 +7,10 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.core.userdetails.User;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
@@ -39,7 +34,8 @@ public class BffCommonConfiguration {
     @Bean
     RestClient coreBankingRestClient(@Qualifier("loadBalancedRestClientBuilder") RestClient.Builder loadBalancedRestClientBuilder,
                                      @Qualifier("standardRestClientBuilder") RestClient.Builder standardRestClientBuilder,
-                                     @Value("${core.banking.url}") String coreBankingUrl) {
+                                     @Value("${core.banking.url}") String coreBankingUrl,
+                                     OAuth2ServiceTokenProvider tokenProvider) {
         RestClient.Builder builder = usesServiceDiscovery(coreBankingUrl)
                 ? loadBalancedRestClientBuilder
                 : standardRestClientBuilder;
@@ -47,6 +43,10 @@ public class BffCommonConfiguration {
         return builder
                 .requestFactory(coreBankingRequestFactory())
                 .baseUrl(coreBankingUrl)
+                .requestInterceptor((request, body, execution) -> {
+                    request.getHeaders().setBearerAuth(tokenProvider.getToken());
+                    return execution.execute(request, body);
+                })
                 .build();
     }
 
@@ -62,60 +62,75 @@ public class BffCommonConfiguration {
     }
 
     @Bean
-    PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
-    }
-
-    @Bean
-    UserDetailsService bffUsers(PasswordEncoder encoder,
-                                @Value("${security.users.web.password}") String webPassword,
-                                @Value("${security.users.mobile.password}") String mobilePassword,
-                                @Value("${security.users.atm.password}") String atmPassword) {
-        UserDetails web = User.builder()
-                .username("webuser")
-                .password(encoder.encode(webPassword))
-                .roles("WEB")
-                .build();
-
-        UserDetails mobile = User.builder()
-                .username("mobileuser")
-                .password(encoder.encode(mobilePassword))
-                .roles("MOBILE")
-                .build();
-
-        UserDetails atm = User.builder()
-                .username("atmuser")
-                .password(encoder.encode(atmPassword))
-                .roles("ATM")
-                .build();
-
-        return new org.springframework.security.provisioning.InMemoryUserDetailsManager(web, mobile, atm);
-    }
-
-    @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http,
                                             ChannelAuthProperties channelAuthProperties) throws Exception {
         http
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(channelAuthProperties.pathPattern()).hasRole(channelAuthProperties.role())
+                        .requestMatchers("/actuator/health").permitAll()
+                        .requestMatchers("/actuator/info").permitAll()
+                        .requestMatchers(channelAuthProperties.pathPattern())
+                        .hasAuthority("SCOPE_" + channelAuthProperties.scope())
                         .anyRequest().authenticated())
-                .httpBasic(Customizer.withDefaults())
+                .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> {}))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .exceptionHandling(errors -> errors
                         .authenticationEntryPoint((request, response, ex) -> {
                             response.setStatus(HttpStatus.UNAUTHORIZED.value());
                             response.setContentType("application/json;charset=UTF-8");
                             response.getWriter().write(
-                                    "{\"status\":401,\"error\":\"UNAUTHORIZED\",\"message\":\"Credenciales requeridas o invalidas\"}");
+                                    "{\"status\":401,\"error\":\"UNAUTHORIZED\",\"message\":\"Token OAuth2 requerido o invalido\"}");
                         })
                         .accessDeniedHandler((request, response, ex) -> {
                             response.setStatus(HttpStatus.FORBIDDEN.value());
                             response.setContentType("application/json;charset=UTF-8");
                             response.getWriter().write(
-                                    "{\"status\":403,\"error\":\"FORBIDDEN\",\"message\":\"Usuario autenticado sin permisos para este canal\"}");
+                                    "{\"status\":403,\"error\":\"FORBIDDEN\",\"message\":\"Token valido sin scope suficiente para este canal\"}");
                         }));
 
         return http.build();
+    }
+
+    @Bean
+    OAuth2ServiceTokenProvider oauth2ServiceTokenProvider(
+            @Value("${app.oauth.token-url}") String tokenUrl,
+            @Value("${app.oauth.client-id}") String clientId,
+            @Value("${app.oauth.client-secret}") String clientSecret,
+            @Value("${app.oauth.core-scope:core.read}") String scope) {
+        return new OAuth2ServiceTokenProvider(tokenUrl, clientId, clientSecret, scope);
+    }
+
+    public static class OAuth2ServiceTokenProvider {
+        private final RestClient tokenClient = RestClient.create();
+        private final String tokenUrl;
+        private final String clientId;
+        private final String clientSecret;
+        private final String scope;
+
+        OAuth2ServiceTokenProvider(String tokenUrl, String clientId, String clientSecret, String scope) {
+            this.tokenUrl = tokenUrl;
+            this.clientId = clientId;
+            this.clientSecret = clientSecret;
+            this.scope = scope;
+        }
+
+        String getToken() {
+            TokenResponse token = tokenClient.post()
+                    .uri(tokenUrl)
+                    .headers(headers -> headers.setBasicAuth(clientId, clientSecret))
+                    .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                    .body("grant_type=client_credentials&scope=" + scope)
+                    .retrieve()
+                    .body(TokenResponse.class);
+
+            if (token == null || token.accessToken() == null) {
+                throw new IllegalStateException("No fue posible obtener token OAuth2 para core-banking");
+            }
+            return token.accessToken();
+        }
+    }
+
+    private record TokenResponse(
+            @com.fasterxml.jackson.annotation.JsonProperty("access_token") String accessToken) {
     }
 }

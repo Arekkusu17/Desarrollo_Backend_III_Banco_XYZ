@@ -1,12 +1,12 @@
 # Banco XYZ Spring Cloud Seguro y Eventos
 
-Proyecto formativo de Semana 7 para evolucionar el sistema Banco XYZ hacia una arquitectura de microservicios con **Spring Cloud Config Server**, **Eureka Service Discovery**, **Spring Cloud Gateway**, seguridad con **Spring Security**, tolerancia a fallos con **Resilience4j** y mensajeria asincrona con **Kafka**.
+Proyecto formativo de Semana 8 para evolucionar el sistema Banco XYZ hacia una arquitectura de microservicios con **Spring Cloud Config Server**, **Eureka Service Discovery**, **Spring Cloud Gateway**, seguridad **OAuth2.0/JWT**, tolerancia a fallos con **Resilience4j** y mensajeria asincrona con **Kafka**.
 
 El sistema mantiene el backend central con los datos procesados desde archivos legacy y los tres BFF independientes por canal construidos en semanas anteriores. En esta version, el retiro del canal ATM se procesa mediante una saga coreografiada basada en eventos.
 
 ## Objetivo
 
-Implementar una arquitectura distribuida para Banco XYZ usando Spring Cloud, manteniendo la separacion por canales BFF e incorporando configuracion centralizada, descubrimiento de servicios, entrada por Gateway, autenticacion/autorizacion, resiliencia ante fallas y procesamiento asincrono de transacciones mediante Kafka.
+Implementar una arquitectura distribuida para Banco XYZ usando Spring Cloud, manteniendo la separacion por canales BFF e incorporando configuracion centralizada, descubrimiento de servicios, entrada por Gateway, autenticacion/autorizacion OAuth2.0, resiliencia ante fallas y procesamiento asincrono de transacciones mediante Kafka.
 
 ## Evolucion Semana 6
 
@@ -24,7 +24,7 @@ Este proyecto cumple esos puntos asi:
 | Service Discovery | Modulo `discovery-server` con Eureka en puerto `8761`. |
 | Microservicio registrado | `core-banking`, `bff-web`, `bff-mobile`, `bff-atm` y `api-gateway`. |
 | Tolerancia a fallos | Circuit Breaker en `bff-web` para el dashboard cuando `core-banking` no responde. |
-| Seguridad | Spring Security con HTTP Basic y roles por canal, conservando respuestas `401` y `403`. |
+| Seguridad | Spring Security como base de autenticacion y autorizacion por canal. |
 | Gateway | Modulo `api-gateway` en puerto `8084`, enruta hacia los BFF mediante Eureka. |
 
 ## Evolucion Semana 7
@@ -41,6 +41,23 @@ La actividad pide configurar tolerancia a fallos y arquitectura de eventos con m
 | Escalabilidad | Topicos con tres particiones y `notification-service-group` para demostrar consumer groups. |
 
 La decision tecnica es usar **Kafka + Saga coreografiada**. Cada servicio reacciona a eventos publicados por otros servicios sin invocaciones sincronas entre todos los participantes de la transaccion. La compensacion se realiza con `funds.release-requested` cuando el riesgo rechaza una operacion despues de reservar fondos.
+
+## Evolucion Semana 8
+
+La actividad pide implementar OAuth2.0, dockerizar microservicios y orquestar todo con Docker Compose. Este proyecto implementa esa evolucion asi:
+
+| Requisito | Implementacion |
+| --- | --- |
+| OAuth2.0 | Modulo `auth-server` en puerto interno `9000`, con Authorization Server y flujo `client_credentials`. |
+| JWT / JWK | `auth-server` emite JWT firmados con RSA y publica sus llaves para validacion por Resource Servers. |
+| Gateway protegido | `api-gateway` exige bearer token y scopes para rutas `/gateway/**`. |
+| BFF protegidos | `bff-web`, `bff-mobile` y `bff-atm` validan JWT y scopes por canal. |
+| Servicios internos protegidos | `core-banking` y endpoint administrativo de `risk-service` validan JWT. |
+| Tokens de servicio | Los BFF obtienen token `client_credentials` para consumir `core-banking`. |
+| Docker | Cada microservicio tiene Dockerfile multi-stage con Maven y Eclipse Temurin 21. |
+| Compose | `docker-compose.yml` levanta PostgreSQL, Kafka y todos los microservicios. |
+
+Docker Compose expone `auth-server` en `localhost:9000` por defecto. Si ese puerto esta ocupado por una herramienta local, se puede cambiar sin editar el YAML usando `AUTH_SERVER_PORT`, por ejemplo `AUTH_SERVER_PORT=9001 docker compose up -d --build`. Dentro de la red Docker los servicios siempre usan `http://auth-server:9000`.
 
 ### Topicos Semana 7
 
@@ -82,6 +99,7 @@ API Gateway :8084
        +--> BFF MOBILE :8082 --+--> CORE BANKING :8080 --> PostgreSQL
        +--> BFF ATM :8083 ----/
 
+Auth Server :9000 --> OAuth2 + JWT + JWK
 Config Server :8888 --> configuracion centralizada
 Eureka :8761        --> registro y descubrimiento de servicios
 ```
@@ -106,6 +124,7 @@ Desarrollo_Backend_III_Banco_XYZ/
 |-- notification-service/ Consumidor de eventos finales y auditoria
 |-- config-server/   Configuracion centralizada Spring Cloud
 |-- discovery-server/ Registro Eureka para descubrimiento de servicios
+|-- auth-server/     Servidor OAuth2 para emision y validacion de JWT
 |-- api-gateway/     Entrada unica hacia los BFF con Spring Cloud Gateway
 |-- postman/         Coleccion de prueba de APIs
 |-- evidencias/      Capturas de ejecucion para la entrega
@@ -114,7 +133,7 @@ Desarrollo_Backend_III_Banco_XYZ/
 |-- pom.xml
 ```
 
-Cada modulo BFF mantiene su logica propia en paquetes `controller`, `model`, `service` y `client`. El modulo `bff-common` concentra la configuracion tecnica reutilizable: `RestClient`, usuarios de laboratorio, autenticacion HTTP Basic, autorizacion por rol y respuestas `401/403`.
+Cada modulo BFF mantiene su logica propia en paquetes `controller`, `model`, `service` y `client`. El modulo `bff-common` concentra la configuracion tecnica reutilizable: `RestClient`, validacion JWT, autorizacion por scope, respuestas `401/403` y obtencion de token de servicio para llamar a `core-banking`.
 
 ## Requisitos
 
@@ -150,7 +169,16 @@ Desde la raiz del proyecto, levantar todos los servicios con Docker Compose:
 docker compose up -d --build
 ```
 
-El comando construye las imagenes cuando existen cambios y deja ejecutando PostgreSQL, Kafka, Core Banking, los tres BFF, Risk Service, Notification Service, Config Server, Eureka y Gateway.
+El comando construye las imagenes cuando existen cambios y deja ejecutando PostgreSQL, Kafka, Core Banking, los tres BFF, Risk Service, Notification Service, Config Server, Eureka, Auth Server y Gateway.
+
+Si el puerto `9000` del host esta ocupado, por ejemplo por SonarQube, levantar el ambiente indicando otro puerto para `auth-server`:
+
+```bash
+AUTH_SERVER_PORT=9001 docker compose up -d --build
+export AUTH_SERVER_PORT=9001
+```
+
+La variable solo cambia el puerto publicado en el host. Entre contenedores, `auth-server` sigue escuchando en `http://auth-server:9000`.
 
 Para revisar el estado de los contenedores:
 
@@ -177,6 +205,7 @@ Puertos utilizados:
 | Servicio | URL |
 | --- | --- |
 | Kafka | `kafka:9092` dentro de Docker, `localhost:29092` para clientes locales |
+| Auth Server | `http://auth-server:9000` dentro de Docker, `http://localhost:${AUTH_SERVER_PORT:-9000}` desde el host |
 | Core Banking | `http://localhost:8080` |
 | BFF Web | `https://localhost:8081` en ejecucion local directa, `http://localhost:8081` con Docker Compose |
 | BFF Mobile | `https://localhost:8082` en ejecucion local directa, `http://localhost:8082` con Docker Compose |
@@ -187,29 +216,62 @@ Puertos utilizados:
 | Config Server | `http://localhost:8888` |
 | Eureka | `http://localhost:8761` |
 
-En Docker Compose los BFF se ejecutan con `BFF_SSL_ENABLED=false` para que el Gateway pueda enrutar internamente por HTTP sin problemas de certificados autofirmados. La seguridad por usuario y rol se mantiene.
+En Docker Compose los BFF se ejecutan con `BFF_SSL_ENABLED=false` para que el Gateway pueda enrutar internamente por HTTP sin problemas de certificados autofirmados. La seguridad se mantiene con OAuth2.0, JWT y scopes.
 
-## Usuarios de laboratorio
+## Clientes OAuth2 de laboratorio
 
-| Usuario | Password | Rol | Canal |
+| Cliente | Secreto | Scopes principales | Uso |
 | --- | --- | --- | --- |
-| `webuser` | `web123` | `WEB` | Web |
-| `mobileuser` | `mobile123` | `MOBILE` | Mobile |
-| `atmuser` | `atm123` | `ATM` | Cajero automatico |
+| `banco-xyz-demo` | `demo-secret` | `web.read`, `mobile.read`, `atm.read`, `atm.write`, `risk.read` | Pruebas desde Postman o curl. |
+| `bff-web` | `bff-web-secret` | `core.read` | Token interno para consultar `core-banking`. |
+| `bff-mobile` | `bff-mobile-secret` | `core.read` | Token interno para consultar `core-banking`. |
+| `bff-atm` | `bff-atm-secret` | `core.read`, `core.write` | Token interno para consultar `core-banking`. |
 
-Las claves se pueden reemplazar con variables de entorno: `WEB_PASSWORD`, `MOBILE_PASSWORD` y `ATM_PASSWORD`.
+Las claves se pueden reemplazar con variables de entorno `OAUTH_DEMO_SECRET`, `OAUTH_BFF_WEB_SECRET`, `OAUTH_BFF_MOBILE_SECRET` y `OAUTH_BFF_ATM_SECRET`.
 
 ## Seguridad
 
-Cada BFF publica sus endpoints por HTTPS y valida credenciales con Spring Security. La autenticacion usa HTTP Basic y la autorizacion se define por rol:
+`auth-server` emite tokens OAuth2.0 con `client_credentials`. `api-gateway`, los BFF, `core-banking` y `risk-service` actuan como Resource Server y validan JWT.
 
-| BFF | Ruta protegida | Rol requerido |
+| Componente | Ruta protegida | Scope requerido |
 | --- | --- | --- |
-| `bff-web` | `/web/**` | `WEB` |
-| `bff-mobile` | `/mobile/**` | `MOBILE` |
-| `bff-atm` | `/atm/**` | `ATM` |
+| `api-gateway` | `/gateway/web/**` | `web.read` |
+| `api-gateway` | `/gateway/mobile/**` | `mobile.read` |
+| `api-gateway` | `/gateway/atm/**` | `atm.read` o `atm.write` |
+| `bff-web` | `/web/**` | `web.read` |
+| `bff-mobile` | `/mobile/**` | `mobile.read` |
+| `bff-atm` | `/atm/**` | `atm.read` |
+| `core-banking` | `/api/**` | `core.read` o `core.write` |
+| `risk-service` | `/api/risk/admin/**` | `risk.read` |
 
-Sin credenciales o con credenciales invalidas, el BFF responde `401 Unauthorized`. Con un usuario valido pero de otro canal, responde `403 Forbidden`.
+Sin token o con token invalido se responde `401 Unauthorized`. Con token valido pero sin scope suficiente se responde `403 Forbidden`.
+
+Obtener token de laboratorio desde el host:
+
+```bash
+curl -u banco-xyz-demo:demo-secret \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  --data-urlencode "grant_type=client_credentials" \
+  --data-urlencode "scope=web.read mobile.read atm.read atm.write risk.read" \
+  http://localhost:${AUTH_SERVER_PORT:-9000}/oauth2/token
+```
+
+Usar el valor `access_token` como bearer token:
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  http://localhost:8084/gateway/web/cuentas/101/dashboard
+```
+
+Para probar `core-banking` directamente se puede obtener un token interno con scope `core.read`:
+
+```bash
+curl -u bff-web:bff-web-secret \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  --data-urlencode "grant_type=client_credentials" \
+  --data-urlencode "scope=core.read" \
+  http://localhost:${AUTH_SERVER_PORT:-9000}/oauth2/token
+```
 
 ## Pruebas
 
@@ -251,15 +313,16 @@ Deberian aparecer, entre otros:
 - `BFF-MOBILE`
 - `BFF-ATM`
 - `API-GATEWAY`
+- `AUTH-SERVER`
 
 ### Gateway
 
 Con Docker Compose:
 
 ```bash
-curl -u webuser:web123 http://localhost:8084/gateway/web/cuentas/101/dashboard
-curl -u mobileuser:mobile123 http://localhost:8084/gateway/mobile/cuentas/101/inicio
-curl -u atmuser:atm123 http://localhost:8084/gateway/atm/cuentas/101/saldo
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8084/gateway/web/cuentas/101/dashboard
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8084/gateway/mobile/cuentas/101/inicio
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8084/gateway/atm/cuentas/101/saldo
 ```
 
 ### Retiro asincrono Semana 7
@@ -267,7 +330,8 @@ curl -u atmuser:atm123 http://localhost:8084/gateway/atm/cuentas/101/saldo
 Iniciar un retiro ATM por Gateway:
 
 ```bash
-curl -i -u atmuser:atm123 -X POST http://localhost:8084/gateway/atm/cuentas/101/retiros \
+curl -i -H "Authorization: Bearer $TOKEN" \
+  -X POST http://localhost:8084/gateway/atm/cuentas/101/retiros \
   -H "Content-Type: application/json" \
   -d '{"amount":10000,"pin":"1234"}'
 ```
@@ -277,7 +341,7 @@ Resultado esperado: `202 Accepted`, con `transactionId` y estado `PENDING`.
 Consultar el estado reemplazando `UUID` por el `transactionId` recibido:
 
 ```bash
-curl -u atmuser:atm123 http://localhost:8084/gateway/atm/transacciones/UUID
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8084/gateway/atm/transacciones/UUID
 ```
 
 Resultado esperado para un flujo exitoso: estado `CONFIRMED` y `authorizationCode`.
@@ -285,7 +349,8 @@ Resultado esperado para un flujo exitoso: estado `CONFIRMED` y `authorizationCod
 Para demostrar idempotencia, republicar deliberadamente el mismo `WithdrawalRequested`:
 
 ```bash
-curl -u atmuser:atm123 -X POST http://localhost:8084/gateway/atm/transacciones/UUID/replay-requested
+curl -H "Authorization: Bearer $TOKEN" \
+  -X POST http://localhost:8084/gateway/atm/transacciones/UUID/replay-requested
 ```
 
 En los logs de `core-banking` debe verse un mensaje similar a `WithdrawalRequested duplicado ignorado`.
@@ -295,29 +360,35 @@ En los logs de `core-banking` debe verse un mensaje similar a `WithdrawalRequest
 Activar falla del servicio de riesgo:
 
 ```bash
-curl -X POST "http://localhost:8090/api/risk/admin/failure?enabled=true"
+curl -H "Authorization: Bearer $TOKEN" \
+  -X POST "http://localhost:8090/api/risk/admin/failure?enabled=true"
 ```
 
 Crear un retiro nuevo:
 
 ```bash
-curl -u atmuser:atm123 -X POST http://localhost:8084/gateway/atm/cuentas/101/retiros \
+curl -H "Authorization: Bearer $TOKEN" \
+  -X POST http://localhost:8084/gateway/atm/cuentas/101/retiros \
   -H "Content-Type: application/json" \
   -d '{"amount":15000,"pin":"1234"}'
 ```
 
 Resultado esperado: la transaccion pasa a `RISK_REJECTED`, `bff-atm` publica `funds.release-requested`, `core-banking` publica `funds.released` y `notification-service` registra la cancelacion.
 
-Revisar el Circuit Breaker:
+Revisar el estado de los Circuit Breakers expuestos por Actuator:
 
 ```bash
-curl http://localhost:8090/actuator/circuitbreakers
+curl http://localhost:8081/actuator/circuitbreakers
+curl http://localhost:8090/actuator/circuitbreakerevents
 ```
+
+Si el endpoint responde sin instancias registradas o sin eventos, ejecutar primero el flujo de falla anterior y capturar la respuesta degradada del BFF o los logs donde se vea el rechazo/compensacion.
 
 Desactivar la falla:
 
 ```bash
-curl -X POST "http://localhost:8090/api/risk/admin/failure?enabled=false"
+curl -H "Authorization: Bearer $TOKEN" \
+  -X POST "http://localhost:8090/api/risk/admin/failure?enabled=false"
 ```
 
 ### Consumer groups
@@ -336,7 +407,7 @@ Al crear varias transacciones, los mensajes de `withdrawal.confirmed` y `withdra
 El endpoint web tiene Circuit Breaker:
 
 ```bash
-curl -u webuser:web123 http://localhost:8084/gateway/web/cuentas/101/dashboard
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8084/gateway/web/cuentas/101/dashboard
 ```
 
 Si `core-banking` no esta disponible, `bff-web` responde de forma degradada con:
@@ -351,14 +422,14 @@ Si `core-banking` no esta disponible, `bff-web` responde de forma degradada con:
 ## API del core bancario
 
 ```bash
-curl http://localhost:8080/api/estado
-curl http://localhost:8080/api/cuentas
-curl http://localhost:8080/api/cuentas/101
-curl http://localhost:8080/api/cuentas/101/resumen
-curl http://localhost:8080/api/cuentas/101/saldo
-curl "http://localhost:8080/api/cuentas/101/movimientos?limit=5"
-curl "http://localhost:8080/api/transacciones?onlyAnomalies=true&limit=5"
-curl "http://localhost:8080/api/rechazos?limit=5"
+curl -H "Authorization: Bearer $CORE_TOKEN" http://localhost:8080/api/estado
+curl -H "Authorization: Bearer $CORE_TOKEN" http://localhost:8080/api/cuentas
+curl -H "Authorization: Bearer $CORE_TOKEN" http://localhost:8080/api/cuentas/101
+curl -H "Authorization: Bearer $CORE_TOKEN" http://localhost:8080/api/cuentas/101/resumen
+curl -H "Authorization: Bearer $CORE_TOKEN" http://localhost:8080/api/cuentas/101/saldo
+curl -H "Authorization: Bearer $CORE_TOKEN" "http://localhost:8080/api/cuentas/101/movimientos?limit=5"
+curl -H "Authorization: Bearer $CORE_TOKEN" "http://localhost:8080/api/transacciones?onlyAnomalies=true&limit=5"
+curl -H "Authorization: Bearer $CORE_TOKEN" "http://localhost:8080/api/rechazos?limit=5"
 ```
 
 ## APIs BFF
@@ -366,13 +437,13 @@ curl "http://localhost:8080/api/rechazos?limit=5"
 ### BFF Web
 
 ```bash
-curl -k -u webuser:web123 https://localhost:8081/web/cuentas/101/dashboard
+curl -k -H "Authorization: Bearer $TOKEN" https://localhost:8081/web/cuentas/101/dashboard
 ```
 
 Con Docker Compose, usar HTTP porque el Gateway enruta por HTTP interno:
 
 ```bash
-curl -u webuser:web123 http://localhost:8081/web/cuentas/101/dashboard
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8081/web/cuentas/101/dashboard
 ```
 
 Respuesta esperada: dashboard con datos de cuenta, saldo disponible, ultimos movimientos, alertas y secciones visibles para web.
@@ -380,11 +451,11 @@ Respuesta esperada: dashboard con datos de cuenta, saldo disponible, ultimos mov
 ### BFF Mobile
 
 ```bash
-curl -k -u mobileuser:mobile123 https://localhost:8082/mobile/cuentas/101/inicio
+curl -k -H "Authorization: Bearer $TOKEN" https://localhost:8082/mobile/cuentas/101/inicio
 ```
 
 ```bash
-curl -u mobileuser:mobile123 http://localhost:8082/mobile/cuentas/101/inicio
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8082/mobile/cuentas/101/inicio
 ```
 
 Respuesta esperada: resumen liviano con saldo, datos principales de cuenta, ultimos movimientos y acciones rapidas.
@@ -392,15 +463,16 @@ Respuesta esperada: resumen liviano con saldo, datos principales de cuenta, ulti
 ### BFF ATM
 
 ```bash
-curl -k -u atmuser:atm123 https://localhost:8083/atm/cuentas/101/saldo
+curl -k -H "Authorization: Bearer $TOKEN" https://localhost:8083/atm/cuentas/101/saldo
 ```
 
 ```bash
-curl -u atmuser:atm123 http://localhost:8083/atm/cuentas/101/saldo
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8083/atm/cuentas/101/saldo
 ```
 
 ```bash
-curl -k -u atmuser:atm123 -X POST https://localhost:8083/atm/cuentas/101/retiros \
+curl -k -H "Authorization: Bearer $TOKEN" \
+  -X POST https://localhost:8083/atm/cuentas/101/retiros \
   -H "Content-Type: application/json" \
   -d '{"amount":1000,"pin":"1234"}'
 ```
@@ -412,54 +484,83 @@ Respuesta esperada: consulta de saldo o retiro simulado aprobado cuando el monto
 | Validacion | Resultado esperado |
 | --- | --- |
 | `./mvnw test` | `BUILD SUCCESS` |
-| `GET /api/estado` | `200 OK` |
-| Web sin credenciales | `401 Unauthorized` |
-| Web con `webuser:web123` | `200 OK` |
-| Web con `mobileuser:mobile123` | `403 Forbidden` |
-| Mobile sin credenciales | `401 Unauthorized` |
-| Mobile con `mobileuser:mobile123` | `200 OK` |
-| Mobile con `atmuser:atm123` | `403 Forbidden` |
-| ATM sin credenciales | `401 Unauthorized` |
-| ATM con `atmuser:atm123` | `200 OK` |
-| ATM con `webuser:web123` | `403 Forbidden` |
-| Retiro ATM con usuario, monto y PIN valido | `200 OK` con retiro aprobado |
+| `GET /api/estado` sin token | `401 Unauthorized` |
+| `GET /api/estado` con token `core.read` | `200 OK` |
+| Web sin token | `401 Unauthorized` |
+| Web con scope `web.read` | `200 OK` |
+| Web con token solo `mobile.read` | `403 Forbidden` |
+| Mobile sin token | `401 Unauthorized` |
+| Mobile con scope `mobile.read` | `200 OK` |
+| Mobile con token solo `atm.read` | `403 Forbidden` |
+| ATM sin token | `401 Unauthorized` |
+| ATM con scope `atm.read` o `atm.write` | `200 OK` |
+| ATM con token solo `web.read` | `403 Forbidden` |
+| Retiro ATM con token valido, monto y PIN valido | `202 Accepted` y confirmacion asincrona |
 
-## Evidencia de ejecucion
+## Evidencia de ejecucion Semana 8
 
-Las capturas de `evidencias/` documentan la ejecucion del sistema y la validacion de los endpoints solicitados.
+Las capturas oficiales de esta seccion se guardan en `evidencias/semana-8/` y documentan la ejecucion final de la Semana 8.
 
-### Servicios levantados
+### Arquitectura actual
 
-![Servicios levantados](evidencias/01-servicios-levantados.png)
+Diagrama simple del estado actual con `auth-server`, `api-gateway`, BFFs, `core-banking`, `risk-service`, `notification-service`, Kafka, PostgreSQL, Config Server y Eureka.
+
+![Arquitectura Semana 8](evidencias/semana-8/00-arquitectura.png)
+
+### Servicios levantados con Docker Compose
+
+Captura de `docker compose ps` mostrando `auth-server`, `api-gateway`, `core-banking`, BFFs, Kafka, PostgreSQL, Config Server, Eureka, Risk Service y Notification Service activos.
+
+![Servicios Semana 8](evidencias/semana-8/01-servicios-levantados.png)
 
 ### Pruebas automatizadas
 
-![Pruebas Maven exitosas](evidencias/02-mvn-test-success.png)
+Captura de `./mvnw test` finalizando con `BUILD SUCCESS`.
 
-### Core bancario
+![Pruebas Maven Semana 8](evidencias/semana-8/02-mvn-test-success.png)
 
-![Core bancario respondiendo](evidencias/03-core-bancario.png)
+### Token OAuth2 emitido por Auth Server
 
-### BFF Web
+Captura del request a `http://localhost:${AUTH_SERVER_PORT:-9000}/oauth2/token` usando `client_credentials`. Se puede ocultar parte del `access_token`.
 
-![BFF Web autorizado](evidencias/04-bff-web-autorizado.png)
+![Token OAuth2](evidencias/semana-8/03-token-oauth2.png)
 
-### BFF Mobile
+### Seguridad sin token
 
-![BFF Mobile autorizado](evidencias/05-bff-mobile-autorizado.png)
+Captura de una llamada al Gateway sin `Authorization: Bearer`, mostrando respuesta `401 Unauthorized`.
 
-### BFF ATM
+![Rechazo sin token](evidencias/semana-8/04-rechazo-sin-token.png)
 
-![BFF ATM saldo autorizado](evidencias/06-bff-atm-saldo-autorizado.png)
+### Seguridad con scope incorrecto
 
-![BFF ATM retiro autorizado](evidencias/07-bff-atm-retiro-autorizado.png)
+Captura de una llamada al Gateway con token valido pero scope insuficiente, mostrando respuesta `403 Forbidden`.
 
-### Seguridad por canal
+![Rechazo scope incorrecto](evidencias/semana-8/05-rechazo-scope-incorrecto.png)
 
-![Rechazo sin credenciales](evidencias/08-rechazo-sin-credenciales.png)
+### Acceso autorizado por Gateway
 
-![Rechazo por rol incorrecto](evidencias/09-rechazo-rol-incorrecto.png)
+Captura de `/gateway/web/cuentas/101/dashboard` con bearer token valido y respuesta `200 OK`.
 
-### Coleccion Postman
+![Gateway autorizado](evidencias/semana-8/06-gateway-autorizado.png)
 
-![Coleccion Postman ejecutada](evidencias/10-postman-collection-run.png)
+### Retiro ATM asincrono con Kafka
+
+Captura del `POST /gateway/atm/cuentas/101/retiros` con respuesta `202 Accepted` y estado inicial `PENDING`.
+
+![Retiro ATM pendiente](evidencias/semana-8/07-retiro-atm-pendiente.png)
+
+Captura de la consulta posterior a `/gateway/atm/transacciones/{transactionId}` mostrando estado `CONFIRMED`.
+
+![Retiro ATM confirmado](evidencias/semana-8/08-retiro-atm-confirmado.png)
+
+### Logs Kafka y notificacion
+
+Captura de logs de `core-banking`, `risk-service` o `notification-service` evidenciando el procesamiento de eventos Kafka.
+
+![Logs Kafka](evidencias/semana-8/09-logs-kafka.png)
+
+### Resilience4j
+
+Captura de fallback o endpoint de actuator relacionado con Circuit Breaker, por ejemplo `risk-service` o `bff-web`.
+
+![Resilience4j](evidencias/semana-8/10-resilience4j.png)
