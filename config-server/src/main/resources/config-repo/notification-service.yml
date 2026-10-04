@@ -1,8 +1,7 @@
+server:
+  port: ${SERVER_PORT:8085}
+
 spring:
-  application:
-    name: notification-service
-  config:
-    import: "optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}"
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     consumer:
@@ -11,9 +10,6 @@ spring:
       properties:
         spring.json.trusted.packages: cl.duoc.backendiii.events
         spring.json.use.type.headers: true
-
-server:
-  port: ${SERVER_PORT:8085}
 
 notification:
   instance-id: ${INSTANCE_ID:notification-1}
