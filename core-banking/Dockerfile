@@ -11,6 +11,7 @@ COPY bff-web/pom.xml bff-web/pom.xml
 COPY bff-mobile/pom.xml bff-mobile/pom.xml
 COPY bff-atm/pom.xml bff-atm/pom.xml
 RUN mvn -q -pl core-banking -am -DskipTests dependency:go-offline
+COPY shared-events/src shared-events/src
 COPY core-banking/src core-banking/src
 RUN mvn -q -pl core-banking -am -DskipTests package
 
