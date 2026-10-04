@@ -70,7 +70,7 @@ spring.datasource.password=banco
 
 Requisitos:
 
-- Java 17 o superior.
+- Java 21.
 - Docker Desktop o Docker Compose.
 - Puerto local `5432` disponible.
 
