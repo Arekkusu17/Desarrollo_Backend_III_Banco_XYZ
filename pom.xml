@@ -15,10 +15,13 @@
         <module>config-server</module>
         <module>discovery-server</module>
         <module>api-gateway</module>
+        <module>shared-events</module>
         <module>core-banking</module>
         <module>bff-common</module>
         <module>bff-web</module>
         <module>bff-mobile</module>
         <module>bff-atm</module>
+        <module>risk-service</module>
+        <module>notification-service</module>
     </modules>
 </project>
