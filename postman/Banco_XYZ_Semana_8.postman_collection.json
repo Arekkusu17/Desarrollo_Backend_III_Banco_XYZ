@@ -1,0 +1,639 @@
+{
+  "info": {
+    "_postman_id": "c9b74c74-59de-49ec-8f6d-2b6d7f0f0f08",
+    "name": "Banco XYZ - Semana 8 - OAuth2 Docker Kafka",
+    "description": "Coleccion ejecutable para evidenciar Semana 8: OAuth2/JWT, Gateway protegido, Docker Compose, Kafka, retiro ATM asincrono y resiliencia con compensacion.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.variables.set('timestamp', new Date().toISOString());"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "authBaseUrl",
+      "value": "http://localhost:9001"
+    },
+    {
+      "key": "gatewayBaseUrl",
+      "value": "http://localhost:8084"
+    },
+    {
+      "key": "riskBaseUrl",
+      "value": "http://localhost:8090"
+    },
+    {
+      "key": "demoClientId",
+      "value": "banco-xyz-demo"
+    },
+    {
+      "key": "demoClientSecret",
+      "value": "demo-secret"
+    },
+    {
+      "key": "accountId",
+      "value": "101"
+    },
+    {
+      "key": "withdrawalAmount",
+      "value": "1000"
+    },
+    {
+      "key": "rejectedAmount",
+      "value": "1500"
+    },
+    {
+      "key": "pin",
+      "value": "1234"
+    }
+  ],
+  "item": [
+    {
+      "name": "01 - Health Gateway",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{gatewayBaseUrl}}/actuator/health",
+          "host": [
+            "{{gatewayBaseUrl}}"
+          ],
+          "path": [
+            "actuator",
+            "health"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Gateway responde 200 OK', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "pm.test('Gateway reporta estado UP', function () {",
+              "  pm.expect(pm.response.json().status).to.eql('UP');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 - Obtener token OAuth2 completo",
+      "request": {
+        "auth": {
+          "type": "basic",
+          "basic": [
+            {
+              "key": "username",
+              "value": "{{demoClientId}}",
+              "type": "string"
+            },
+            {
+              "key": "password",
+              "value": "{{demoClientSecret}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/x-www-form-urlencoded"
+          }
+        ],
+        "body": {
+          "mode": "urlencoded",
+          "urlencoded": [
+            {
+              "key": "grant_type",
+              "value": "client_credentials",
+              "type": "text"
+            },
+            {
+              "key": "scope",
+              "value": "web.read mobile.read atm.read atm.write risk.read",
+              "type": "text"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{authBaseUrl}}/oauth2/token",
+          "host": [
+            "{{authBaseUrl}}"
+          ],
+          "path": [
+            "oauth2",
+            "token"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Auth Server emite token', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.access_token).to.be.a('string').and.not.empty;",
+              "  pm.collectionVariables.set('accessToken', json.access_token);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 - Gateway rechaza sin token",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{gatewayBaseUrl}}/gateway/web/cuentas/{{accountId}}/dashboard",
+          "host": [
+            "{{gatewayBaseUrl}}"
+          ],
+          "path": [
+            "gateway",
+            "web",
+            "cuentas",
+            "{{accountId}}",
+            "dashboard"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Sin Bearer token responde 401', function () {",
+              "  pm.response.to.have.status(401);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 - Obtener token con scope mobile.read",
+      "request": {
+        "auth": {
+          "type": "basic",
+          "basic": [
+            {
+              "key": "username",
+              "value": "{{demoClientId}}",
+              "type": "string"
+            },
+            {
+              "key": "password",
+              "value": "{{demoClientSecret}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/x-www-form-urlencoded"
+          }
+        ],
+        "body": {
+          "mode": "urlencoded",
+          "urlencoded": [
+            {
+              "key": "grant_type",
+              "value": "client_credentials",
+              "type": "text"
+            },
+            {
+              "key": "scope",
+              "value": "mobile.read",
+              "type": "text"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{authBaseUrl}}/oauth2/token",
+          "host": [
+            "{{authBaseUrl}}"
+          ],
+          "path": [
+            "oauth2",
+            "token"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Auth Server emite token de scope limitado', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.access_token).to.be.a('string').and.not.empty;",
+              "  pm.collectionVariables.set('mobileToken', json.access_token);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 - Gateway rechaza scope incorrecto",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{mobileToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{gatewayBaseUrl}}/gateway/web/cuentas/{{accountId}}/dashboard",
+          "host": [
+            "{{gatewayBaseUrl}}"
+          ],
+          "path": [
+            "gateway",
+            "web",
+            "cuentas",
+            "{{accountId}}",
+            "dashboard"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Token valido sin web.read responde 403', function () {",
+              "  pm.response.to.have.status(403);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 - Gateway Web autorizado",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{gatewayBaseUrl}}/gateway/web/cuentas/{{accountId}}/dashboard",
+          "host": [
+            "{{gatewayBaseUrl}}"
+          ],
+          "path": [
+            "gateway",
+            "web",
+            "cuentas",
+            "{{accountId}}",
+            "dashboard"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Dashboard Web responde 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "pm.test('Dashboard indica canal WEB', function () {",
+              "  pm.expect(pm.response.json().channel).to.eql('WEB');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 - Crear retiro ATM pendiente",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"amount\": {{withdrawalAmount}},\n  \"pin\": \"{{pin}}\"\n}"
+        },
+        "url": {
+          "raw": "{{gatewayBaseUrl}}/gateway/atm/cuentas/{{accountId}}/retiros",
+          "host": [
+            "{{gatewayBaseUrl}}"
+          ],
+          "path": [
+            "gateway",
+            "atm",
+            "cuentas",
+            "{{accountId}}",
+            "retiros"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Retiro ATM responde 202 Accepted', function () {",
+              "  pm.response.to.have.status(202);",
+              "});",
+              "pm.test('Retiro inicia en PENDING y guarda transactionId', function () {",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.status).to.eql('PENDING');",
+              "  pm.expect(json.transactionId).to.be.a('string').and.not.empty;",
+              "  pm.collectionVariables.set('transactionId', json.transactionId);",
+              "  pm.collectionVariables.set('confirmPollCount', '0');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "08 - Consultar retiro hasta confirmar",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{gatewayBaseUrl}}/gateway/atm/transacciones/{{transactionId}}",
+          "host": [
+            "{{gatewayBaseUrl}}"
+          ],
+          "path": [
+            "gateway",
+            "atm",
+            "transacciones",
+            "{{transactionId}}"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Consulta de transaccion responde 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "const json = pm.response.json();",
+              "const count = Number(pm.collectionVariables.get('confirmPollCount') || '0');",
+              "if (json.status !== 'CONFIRMED' && count < 8) {",
+              "  pm.collectionVariables.set('confirmPollCount', String(count + 1));",
+              "  pm.test('Esperando confirmacion asincrona', function (done) {",
+              "    setTimeout(function () {",
+              "      pm.expect(json.status).to.be.oneOf(['PENDING', 'CONFIRMED']);",
+              "      done();",
+              "    }, 1000);",
+              "  });",
+              "  postman.setNextRequest('08 - Consultar retiro hasta confirmar');",
+              "} else {",
+              "  pm.test('Retiro confirmado por saga Kafka', function () {",
+              "    pm.expect(json.status).to.eql('CONFIRMED');",
+              "    pm.expect(json.authorizationCode).to.be.a('string').and.not.empty;",
+              "  });",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "09 - Activar falla de riesgo",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{riskBaseUrl}}/api/risk/admin/failure?enabled=true",
+          "host": [
+            "{{riskBaseUrl}}"
+          ],
+          "path": [
+            "api",
+            "risk",
+            "admin",
+            "failure"
+          ],
+          "query": [
+            {
+              "key": "enabled",
+              "value": "true"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Falla de risk-service activada', function () {",
+              "  pm.response.to.have.status(200);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "10 - Crear retiro para rechazo por resiliencia",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"amount\": {{rejectedAmount}},\n  \"pin\": \"{{pin}}\"\n}"
+        },
+        "url": {
+          "raw": "{{gatewayBaseUrl}}/gateway/atm/cuentas/{{accountId}}/retiros",
+          "host": [
+            "{{gatewayBaseUrl}}"
+          ],
+          "path": [
+            "gateway",
+            "atm",
+            "cuentas",
+            "{{accountId}}",
+            "retiros"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Retiro con riesgo caido responde 202 Accepted', function () {",
+              "  pm.response.to.have.status(202);",
+              "});",
+              "pm.test('Retiro de rechazo inicia en PENDING', function () {",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.status).to.eql('PENDING');",
+              "  pm.collectionVariables.set('rejectedTransactionId', json.transactionId);",
+              "  pm.collectionVariables.set('rejectPollCount', '0');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "11 - Consultar retiro hasta rechazo compensado",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{gatewayBaseUrl}}/gateway/atm/transacciones/{{rejectedTransactionId}}",
+          "host": [
+            "{{gatewayBaseUrl}}"
+          ],
+          "path": [
+            "gateway",
+            "atm",
+            "transacciones",
+            "{{rejectedTransactionId}}"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Consulta de rechazo responde 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "const json = pm.response.json();",
+              "const count = Number(pm.collectionVariables.get('rejectPollCount') || '0');",
+              "if (json.status !== 'RISK_REJECTED' && count < 8) {",
+              "  pm.collectionVariables.set('rejectPollCount', String(count + 1));",
+              "  pm.test('Esperando rechazo asincrono', function (done) {",
+              "    setTimeout(function () {",
+              "      pm.expect(json.status).to.be.oneOf(['PENDING', 'RISK_REJECTED']);",
+              "      done();",
+              "    }, 1000);",
+              "  });",
+              "  postman.setNextRequest('11 - Consultar retiro hasta rechazo compensado');",
+              "} else {",
+              "  pm.test('Retiro rechazado por fallback de Resilience4j', function () {",
+              "    pm.expect(json.status).to.eql('RISK_REJECTED');",
+              "    pm.expect(json.message).to.include('Risk service unavailable');",
+              "  });",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "12 - Desactivar falla de riesgo",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{riskBaseUrl}}/api/risk/admin/failure?enabled=false",
+          "host": [
+            "{{riskBaseUrl}}"
+          ],
+          "path": [
+            "api",
+            "risk",
+            "admin",
+            "failure"
+          ],
+          "query": [
+            {
+              "key": "enabled",
+              "value": "false"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Falla de risk-service desactivada', function () {",
+              "  pm.response.to.have.status(200);",
+              "});"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

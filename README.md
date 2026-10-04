@@ -281,12 +281,13 @@ Ejecutar la suite completa:
 ./mvnw test
 ```
 
-La coleccion Postman esta disponible en:
+La coleccion Postman de Semana 8 esta disponible en:
 
 ```text
-postman/Banco_XYZ_Semana_5.postman_collection.json
-postman/Banco_XYZ_Semana_6.postman_collection.json
+postman/Banco_XYZ_Semana_8.postman_collection.json
 ```
+
+Para ejecutarla desde Postman, importar la coleccion, confirmar que `authBaseUrl` use el puerto publicado del `auth-server` (`http://localhost:9001` si se levanto con `AUTH_SERVER_PORT=9001`) y correrla completa con Collection Runner. La ejecucion valida token OAuth2, respuestas `401/403`, acceso autorizado, retiro confirmado por Kafka y rechazo con compensacion por Resilience4j.
 
 ## APIs Spring Cloud Semana 6
 
