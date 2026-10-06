@@ -267,13 +267,3 @@ Las evidencias oficiales estan en `evidencias/`.
 
 ![Coleccion Postman Semana 8](evidencias/11-postman-collection-run.png)
 
-## Checklist de Entrega
-
-| Criterio Semana 8 | Estado |
-| --- | --- |
-| OAuth2.0 funcional | Cumplido con `auth-server`, JWT, scopes y Resource Servers. |
-| Imagenes Docker para microservicios | Cumplido con Dockerfile por servicio. |
-| Docker Compose funcional | Cumplido con PostgreSQL, Kafka y microservicios orquestados. |
-| Resilience4j | Cumplido en `risk-service` con fallback de rechazo y compensacion. |
-| Kafka o JMS | Cumplido con Kafka y saga de retiro ATM. |
-| Codigo, README y evidencias | Cumplido en repo, README y carpeta `evidencias/`. |
