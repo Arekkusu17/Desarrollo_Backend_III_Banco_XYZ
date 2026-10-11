@@ -7,6 +7,10 @@ public record LegacyInterestAccount(
         String customerName,
         String balance,
         String age,
-        String accountType
+        String accountType,
+        Boolean sourceDuplicate
 ) {
+    public LegacyInterestAccount(String accountId, String customerName, String balance, String age, String accountType) {
+        this(accountId, customerName, balance, age, accountType, null);
+    }
 }

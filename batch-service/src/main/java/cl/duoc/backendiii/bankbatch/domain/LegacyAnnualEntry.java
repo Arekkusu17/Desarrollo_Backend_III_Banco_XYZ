@@ -7,6 +7,10 @@ public record LegacyAnnualEntry(
         String date,
         String transactionType,
         String amount,
-        String description
+        String description,
+        Boolean sourceDuplicate
 ) {
+    public LegacyAnnualEntry(String accountId, String date, String transactionType, String amount, String description) {
+        this(accountId, date, transactionType, amount, description, null);
+    }
 }

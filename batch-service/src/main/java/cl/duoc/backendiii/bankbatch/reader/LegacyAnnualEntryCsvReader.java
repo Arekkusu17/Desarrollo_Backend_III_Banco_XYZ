@@ -20,4 +20,22 @@ public class LegacyAnnualEntryCsvReader extends AbstractLegacyCsvReader<LegacyAn
     protected LegacyAnnualEntry map(String[] fields) {
         return new LegacyAnnualEntry(fields[0], fields[1], fields[2], fields[3], fields[4]);
     }
+
+    @Override
+    protected LegacyAnnualEntry map(String[] fields, boolean duplicate) {
+        return new LegacyAnnualEntry(fields[0], fields[1], fields[2], fields[3], fields[4], duplicate);
+    }
+
+    @Override
+    protected String deduplicationKey(String[] fields) {
+        try {
+            return cl.duoc.backendiii.bankbatch.processor.LegacyParsing.parseLong(fields[0], "id") + "|"
+                    + cl.duoc.backendiii.bankbatch.processor.LegacyParsing.parseDate(fields[1]) + "|"
+                    + cl.duoc.backendiii.bankbatch.processor.LegacyParsing.requireText(fields[2], "tipo").toLowerCase() + "|"
+                    + cl.duoc.backendiii.bankbatch.processor.LegacyParsing.parseMoney(fields[3], "monto") + "|"
+                    + cl.duoc.backendiii.bankbatch.processor.LegacyParsing.requireText(fields[4], "descripcion");
+        } catch (RuntimeException ex) {
+            return null;
+        }
+    }
 }

@@ -47,7 +47,8 @@ public class AnnualStatementProcessor implements ItemProcessor<LegacyAnnualEntry
             String description = LegacyParsing.requireText(item.description(), "descripcion vacia");
             String key = accountId + "|" + date + "|" + transactionType + "|" + amount + "|" + description;
 
-            if (!processedKeys.add(key)) {
+            if (Boolean.TRUE.equals(item.sourceDuplicate())
+                    || item.sourceDuplicate() == null && !processedKeys.add(key)) {
                 reject(item.accountId(), "movimiento anual duplicado", item);
                 return null;
             }

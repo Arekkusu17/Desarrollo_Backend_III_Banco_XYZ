@@ -309,9 +309,11 @@ public class BatchConfiguration {
     public Job annualStatementsJob(JobRepository jobRepository,
                                    Step annualStatementsPartitionStep,
                                    JobExecutionSummaryListener jobExecutionSummaryListener,
-                                   BankJobCompletionDecider bankJobCompletionDecider) {
+                                   BankJobCompletionDecider bankJobCompletionDecider,
+                                   AnnualStatementReportWriter annualStatementReportWriter) {
         return new JobBuilder("annualStatementsJob", jobRepository)
                 .listener(jobExecutionSummaryListener)
+                .listener(annualStatementReportWriter)
                 .start(annualStatementsPartitionStep)
                 .next(bankJobCompletionDecider)
                 .on(BankJobCompletionDecider.REVIEW_REQUIRED).end(BankJobCompletionDecider.REVIEW_REQUIRED)
