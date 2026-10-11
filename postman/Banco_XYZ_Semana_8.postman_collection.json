@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "c9b74c74-59de-49ec-8f6d-2b6d7f0f0f08",
     "name": "Banco XYZ - Semana 9 - Microservicios EFT",
-    "description": "Coleccion ejecutable para probar la version desacoplada de Banco XYZ: OAuth2/JWT, Gateway protegido, BFFs, ms-account, ms-payment, ms-customer, batch-service, Kafka y resiliencia.",
+    "description": "Validacion EFT: OAuth2, Web/Mobile/ATM, cuentas, pagos idempotentes y clientes. Importar el entorno EC2 incluido. Carpetas de batch y escalabilidad son opcionales; no ejecutan SQL, Docker ni pruebas de carga. Las escrituras nuevas usan cuentas aisladas y dejan datos de laboratorio.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "event": [
@@ -88,6 +88,34 @@
     {
       "key": "customerName",
       "value": "Alex Fernandez"
+    },
+    {
+      "key": "batchBaseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "batchClientId",
+      "value": "bff-web"
+    },
+    {
+      "key": "batchClientSecret",
+      "value": "bff-web-secret"
+    },
+    {
+      "key": "enableBatchChecks",
+      "value": "false"
+    },
+    {
+      "key": "enableScalingChecks",
+      "value": "false"
+    },
+    {
+      "key": "expectedInstances",
+      "value": "2"
+    },
+    {
+      "key": "scalingSamples",
+      "value": "6"
     }
   ],
   "item": [
@@ -159,7 +187,7 @@
             },
             {
               "key": "scope",
-              "value": "web.read mobile.read atm.read atm.write risk.read account.read payment.read payment.write customer.read customer.write",
+              "value": "web.read mobile.read atm.read atm.write risk.read account.read payment.read payment.write customer.read customer.write account.write",
               "type": "text"
             }
           ]
@@ -467,7 +495,7 @@
               "      done();",
               "    }, 1000);",
               "  });",
-              "  postman.setNextRequest('08 - Consultar retiro hasta confirmar');",
+              "  pm.execution.setNextRequest('08 - Consultar retiro hasta confirmar');",
               "} else {",
               "  pm.test('Retiro confirmado por saga Kafka', function () {",
               "    pm.expect(json.status).to.eql('CONFIRMED');",
@@ -616,7 +644,7 @@
               "      done();",
               "    }, 1000);",
               "  });",
-              "  postman.setNextRequest('11 - Consultar retiro hasta rechazo compensado');",
+              "  pm.execution.setNextRequest('11 - Consultar retiro hasta rechazo compensado');",
               "} else {",
               "  pm.test('Retiro rechazado por fallback de Resilience4j', function () {",
               "    pm.expect(json.status).to.eql('RISK_REJECTED');",
@@ -923,7 +951,7 @@
           }
         ],
         "url": {
-          "raw": "{{gatewayBaseUrl}}/gateway/payments/",
+          "raw": "{{gatewayBaseUrl}}/gateway/payments",
           "host": [
             "{{gatewayBaseUrl}}"
           ],
@@ -1021,7 +1049,7 @@
               "pm.test('ms-customer crea perfil', function () {",
               "  pm.response.to.have.status(201);",
               "  const json = pm.response.json();",
-              "  pm.expect(json.customerId).to.eql(101);",
+              "  pm.expect(json.customerId).to.eql(Number(pm.variables.get('customerId')));",
               "  pm.expect(json.segment).to.eql('PREMIUM');",
               "});"
             ]
@@ -1060,7 +1088,7 @@
               "pm.test('ms-customer retorna perfil', function () {",
               "  pm.response.to.have.status(200);",
               "  const json = pm.response.json();",
-              "  pm.expect(json.customerId).to.eql(Number(pm.collectionVariables.get('customerId') || pm.variables.get('customerId')));",
+              "  pm.expect(json.customerId).to.eql(Number(pm.variables.get('customerId')));",
               "});"
             ]
           }
@@ -1078,7 +1106,7 @@
           }
         ],
         "url": {
-          "raw": "{{gatewayBaseUrl}}/gateway/customers/",
+          "raw": "{{gatewayBaseUrl}}/gateway/customers",
           "host": [
             "{{gatewayBaseUrl}}"
           ],
@@ -1100,6 +1128,1099 @@
               "});"
             ]
           }
+        }
+      ]
+    },
+    {
+      "name": "24 - Gateway Mobile autorizado",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": "{{gatewayBaseUrl}}/gateway/mobile/cuentas/{{accountId}}/inicio"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('Respuesta adaptada al canal MOBILE', () => { pm.expect(json.channel).to.eql('MOBILE'); pm.expect(json.accountId).to.eql(Number(pm.variables.get('accountId'))); pm.expect(json.latestMovements).to.be.an('array'); pm.expect(json.quickActions).to.be.an('array'); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "25 - Gestion de cuentas por Gateway",
+      "description": "Ejecutar toda la carpeta en orden despues del token 02. Crea una cuenta nueva con saldo cero y la cierra. No realiza borrado fisico.",
+      "item": [
+        {
+          "name": "25.01 - Abrir cuenta de prueba",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayBaseUrl}}/gateway/cuentas",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"accountId\":{{managedAccountId}},\"customerName\":\"Cliente Postman\",\"accountType\":\"ahorro\",\"age\":30,\"initialBalance\":0}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('managedAccountId', String(900000000000 + Date.now() + Math.floor(Math.random() * 10000)));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Cuenta creada', () => { pm.response.to.have.status(201); const json = pm.response.json(); pm.expect(json.accountId).to.eql(Number(pm.variables.get('managedAccountId'))); pm.expect(json.balance).to.eql(0); pm.expect(json.status).to.eql('ACTIVE'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "25.02 - Mantener cuenta",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayBaseUrl}}/gateway/cuentas/{{managedAccountId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"accountId\":{{managedAccountId}},\"customerName\":\"Cliente Postman Actualizado\",\"accountType\":\"corriente\",\"age\":30,\"initialBalance\":0}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Datos actualizados sin modificar saldo', () => { pm.expect(json.customerName).to.eql('Cliente Postman Actualizado'); pm.expect(json.accountType).to.eql('corriente'); pm.expect(json.balance).to.eql(0); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "25.03 - Consultar gestion de cuenta",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{gatewayBaseUrl}}/gateway/cuentas/{{managedAccountId}}/gestion"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Cuenta activa y actualizada', () => { pm.expect(json.accountId).to.eql(Number(pm.variables.get('managedAccountId'))); pm.expect(json.customerName).to.eql('Cliente Postman Actualizado'); pm.expect(json.status).to.eql('ACTIVE'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "25.04 - Cerrar cuenta con saldo cero",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{gatewayBaseUrl}}/gateway/cuentas/{{managedAccountId}}/cierre"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Cuenta cerrada', () => pm.expect(pm.response.json().status).to.eql('CLOSED'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "25.05 - Confirmar cierre persistido",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{gatewayBaseUrl}}/gateway/cuentas/{{managedAccountId}}/gestion"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Cierre conservado', () => { pm.expect(json.status).to.eql('CLOSED'); pm.expect(json.balance).to.eql(0); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "25.06 - Escritura rechazada por scope",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{mobileToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayBaseUrl}}/gateway/cuentas/{{managedAccountId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"accountId\":{{managedAccountId}},\"customerName\":\"No autorizado\",\"accountType\":\"ahorro\",\"age\":30,\"initialBalance\":0}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Token mobile.read no puede mantener cuentas', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "26 - Pagos e idempotencia con cuentas aisladas",
+      "description": "Ejecutar completa, en orden, despues del token 02. Crea dos cuentas propias; verifica saldos y rechazo atomico. Conserva cuentas/operaciones de laboratorio al terminar.",
+      "item": [
+        {
+          "name": "26.01 - Abrir origen con saldo 100",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayBaseUrl}}/gateway/cuentas",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"accountId\":{{paymentTestAccountId}},\"customerName\":\"Origen Postman\",\"accountType\":\"ahorro\",\"age\":30,\"initialBalance\":100}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const id = 910000000000 + Date.now() + Math.floor(Math.random() * 10000);",
+                  "pm.collectionVariables.set('paymentTestAccountId', String(id));",
+                  "pm.collectionVariables.set('paymentTestTargetId', String(id + 1));",
+                  "pm.collectionVariables.set('depositIdempotencyKey', pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Cuenta creada', () => { pm.response.to.have.status(201); const json = pm.response.json(); pm.expect(json.accountId).to.eql(Number(pm.variables.get('paymentTestAccountId'))); pm.expect(json.balance).to.eql(100); pm.expect(json.status).to.eql('ACTIVE'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "26.02 - Abrir destino con saldo cero",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayBaseUrl}}/gateway/cuentas",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"accountId\":{{paymentTestTargetId}},\"customerName\":\"Destino Postman\",\"accountType\":\"ahorro\",\"age\":30,\"initialBalance\":0}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Cuenta creada', () => { pm.response.to.have.status(201); const json = pm.response.json(); pm.expect(json.accountId).to.eql(Number(pm.variables.get('paymentTestTargetId'))); pm.expect(json.balance).to.eql(0); pm.expect(json.status).to.eql('ACTIVE'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "26.03 - Saldo inicial origen",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{gatewayBaseUrl}}/gateway/cuentas/{{paymentTestAccountId}}/saldo"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Saldo esperado 100', () => pm.expect(pm.response.json().availableBalance).to.eql(100));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "26.04 - Deposito con Idempotency-Key",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{depositIdempotencyKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayBaseUrl}}/gateway/payments/deposits",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"targetAccountId\":{{paymentTestAccountId}},\"amount\":25,\"description\":\"Deposito idempotente Postman\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Operacion aceptada', () => { pm.response.to.have.status(201); const json = pm.response.json(); pm.expect(json.status).to.eql('ACCEPTED'); pm.expect(json.type).to.eql('DEPOSIT'); pm.collectionVariables.set('idempotentOperationId', json.operationId); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "26.05 - Repetir el mismo deposito",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{depositIdempotencyKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayBaseUrl}}/gateway/payments/deposits",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"targetAccountId\":{{paymentTestAccountId}},\"amount\":25,\"description\":\"Deposito idempotente Postman\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Operacion aceptada', () => { pm.response.to.have.status(201); const json = pm.response.json(); pm.expect(json.status).to.eql('ACCEPTED'); pm.expect(json.type).to.eql('DEPOSIT'); pm.expect(json.operationId).to.eql(pm.collectionVariables.get('idempotentOperationId')); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "26.06 - Saldo aumenta solo una vez",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{gatewayBaseUrl}}/gateway/cuentas/{{paymentTestAccountId}}/saldo"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Saldo esperado 125', () => pm.expect(pm.response.json().availableBalance).to.eql(125));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "26.07 - Reutilizar clave con monto distinto",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{depositIdempotencyKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayBaseUrl}}/gateway/payments/deposits",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"targetAccountId\":{{paymentTestAccountId}},\"amount\":30,\"description\":\"Deposito idempotente Postman\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Cambio de cuerpo con la misma clave responde 409', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "26.08 - Conflicto no altera saldo",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{gatewayBaseUrl}}/gateway/cuentas/{{paymentTestAccountId}}/saldo"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Saldo esperado 125', () => pm.expect(pm.response.json().availableBalance).to.eql(125));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "26.09 - Transferir 20",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayBaseUrl}}/gateway/payments/transfers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"sourceAccountId\":{{paymentTestAccountId}},\"targetAccountId\":{{paymentTestTargetId}},\"amount\":20,\"description\":\"Transferencia Postman aislada\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Operacion aceptada', () => { pm.response.to.have.status(201); const json = pm.response.json(); pm.expect(json.status).to.eql('ACCEPTED'); pm.expect(json.type).to.eql('TRANSFER');  });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "26.10 - Saldo origen tras transferencia",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{gatewayBaseUrl}}/gateway/cuentas/{{paymentTestAccountId}}/saldo"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Saldo esperado 105', () => pm.expect(pm.response.json().availableBalance).to.eql(105));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "26.11 - Saldo destino tras transferencia",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{gatewayBaseUrl}}/gateway/cuentas/{{paymentTestTargetId}}/saldo"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Saldo esperado 20', () => pm.expect(pm.response.json().availableBalance).to.eql(20));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "26.12 - Transferencia sin fondos suficientes",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayBaseUrl}}/gateway/payments/transfers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"sourceAccountId\":{{paymentTestAccountId}},\"targetAccountId\":{{paymentTestTargetId}},\"amount\":500,\"description\":\"Transferencia Postman aislada\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Saldo insuficiente responde 409', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "26.13 - Rechazo no debita origen",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{gatewayBaseUrl}}/gateway/cuentas/{{paymentTestAccountId}}/saldo"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Saldo esperado 105', () => pm.expect(pm.response.json().availableBalance).to.eql(105));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "26.14 - Rechazo no acredita destino",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{gatewayBaseUrl}}/gateway/cuentas/{{paymentTestTargetId}}/saldo"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Saldo esperado 20', () => pm.expect(pm.response.json().availableBalance).to.eql(20));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "26.15 - Procesar pago de 5",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayBaseUrl}}/gateway/payments/payments",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"sourceAccountId\":{{paymentTestAccountId}},\"amount\":5,\"description\":\"Pago Postman aislado\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Operacion aceptada', () => { pm.response.to.have.status(201); const json = pm.response.json(); pm.expect(json.status).to.eql('ACCEPTED'); pm.expect(json.type).to.eql('PAYMENT');  });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "26.16 - Saldo origen tras pago",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{gatewayBaseUrl}}/gateway/cuentas/{{paymentTestAccountId}}/saldo"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Saldo esperado 100', () => pm.expect(pm.response.json().availableBalance).to.eql(100));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "27 - Datos batch por API (opcional)",
+      "description": "Activar enableBatchChecks=true. En EC2 usar tunel SSH -L 18080:localhost:8080 y batchBaseUrl=http://localhost:18080, sin abrir 8080 al publico. Consulta resultados; no demuestra estados de jobs, checkpoints ni CSV, que requieren SQL/Docker.",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (String(pm.variables.get('enableBatchChecks')) !== 'true') pm.execution.skipRequest();"
+            ]
+          }
+        }
+      ],
+      "item": [
+        {
+          "name": "27.01 - Token interno de lectura batch",
+          "request": {
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{batchClientId}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{batchClientSecret}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "client_credentials",
+                  "type": "text"
+                },
+                {
+                  "key": "scope",
+                  "value": "core.read",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{authBaseUrl}}/oauth2/token",
+              "host": [
+                "{{authBaseUrl}}"
+              ],
+              "path": [
+                "oauth2",
+                "token"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Token batch emitido', () => { pm.response.to.have.status(200); const token = pm.response.json().access_token; pm.expect(token).to.be.a('string').and.not.empty; pm.collectionVariables.set('batchToken', token); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "27.02 - Health batch-service",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{batchToken}}"
+              }
+            ],
+            "url": "{{batchBaseUrl}}/actuator/health"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Batch UP', () => pm.expect(pm.response.json().status).to.eql('UP'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "27.03 - Conteos de resultados batch",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{batchToken}}"
+              }
+            ],
+            "url": "{{batchBaseUrl}}/api/estado"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Datos de los tres procesos presentes', () => { ['accounts','annualMovements','dailyTransactions'].forEach(key => pm.expect(json[key]).to.be.above(0)); pm.expect(json.rejectedRecords).to.be.at.least(0); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "27.04 - Transacciones batch procesadas",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{batchToken}}"
+              }
+            ],
+            "url": "{{batchBaseUrl}}/api/transacciones?limit=20"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Muestra de transacciones disponible', () => pm.expect(pm.response.json()).to.be.an('array').and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "27.05 - Rechazos batch para auditoria",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{batchToken}}"
+              }
+            ],
+            "url": "{{batchBaseUrl}}/api/rechazos?limit=20"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Rechazos consultables', () => pm.expect(pm.response.json()).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "28 - Escalabilidad por Gateway (opcional)",
+      "description": "Ejecutar solo esta carpeta despues de obtener token 02 y escalar con Docker. enableScalingChecks=true; expectedInstances=2. Toma 6 muestras por servicio con 1 segundo de espera. No inicia replicas ni hace pruebas de carga. Durante escalado no ejecutar las requests directas 13-23.",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (String(pm.variables.get('enableScalingChecks')) !== 'true') pm.execution.skipRequest();"
+            ]
+          }
+        }
+      ],
+      "item": [
+        {
+          "name": "28 - Instancias ms-account",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{gatewayBaseUrl}}/gateway/cuentas"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const countKey = 'ms-account.sampleCount';",
+                  "const seenKey = 'ms-account.observedInstances';",
+                  "const count = Number(pm.collectionVariables.get(countKey) || 0);",
+                  "const expected = Number(pm.variables.get('expectedInstances'));",
+                  "const samples = Math.min(20, Math.max(2, Number(pm.variables.get('scalingSamples')) || 6));",
+                  "const instance = pm.response.headers.get('X-Service-Instance');",
+                  "const seen = count === 0 ? [] : JSON.parse(pm.collectionVariables.get(seenKey) || '[]');",
+                  "pm.test('Identificador de instancia presente', () => pm.expect(instance).to.be.a('string').and.not.empty);",
+                  "pm.test('Instancia corresponde a ms-account', () => pm.expect(typeof instance === 'string' && instance.startsWith('ms-account:')).to.eql(true));",
+                  "if (instance && !seen.includes(instance)) seen.push(instance);",
+                  "pm.collectionVariables.set(seenKey, JSON.stringify(seen));",
+                  "if (count + 1 < samples) {",
+                  "  pm.collectionVariables.set(countKey, String(count + 1));",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  setTimeout(() => {}, 1000);",
+                  "} else {",
+                  "  pm.collectionVariables.unset(countKey);",
+                  "  pm.test('Se observaron las replicas esperadas', () => {",
+                  "    pm.expect(Number.isInteger(expected) && expected >= 1).to.eql(true);",
+                  "    pm.expect(seen.length).to.be.at.least(expected);",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "28 - Instancias ms-payment",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{gatewayBaseUrl}}/gateway/payments"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const countKey = 'ms-payment.sampleCount';",
+                  "const seenKey = 'ms-payment.observedInstances';",
+                  "const count = Number(pm.collectionVariables.get(countKey) || 0);",
+                  "const expected = Number(pm.variables.get('expectedInstances'));",
+                  "const samples = Math.min(20, Math.max(2, Number(pm.variables.get('scalingSamples')) || 6));",
+                  "const instance = pm.response.headers.get('X-Service-Instance');",
+                  "const seen = count === 0 ? [] : JSON.parse(pm.collectionVariables.get(seenKey) || '[]');",
+                  "pm.test('Identificador de instancia presente', () => pm.expect(instance).to.be.a('string').and.not.empty);",
+                  "pm.test('Instancia corresponde a ms-payment', () => pm.expect(typeof instance === 'string' && instance.startsWith('ms-payment:')).to.eql(true));",
+                  "if (instance && !seen.includes(instance)) seen.push(instance);",
+                  "pm.collectionVariables.set(seenKey, JSON.stringify(seen));",
+                  "if (count + 1 < samples) {",
+                  "  pm.collectionVariables.set(countKey, String(count + 1));",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  setTimeout(() => {}, 1000);",
+                  "} else {",
+                  "  pm.collectionVariables.unset(countKey);",
+                  "  pm.test('Se observaron las replicas esperadas', () => {",
+                  "    pm.expect(Number.isInteger(expected) && expected >= 1).to.eql(true);",
+                  "    pm.expect(seen.length).to.be.at.least(expected);",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "28 - Instancias ms-customer",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{gatewayBaseUrl}}/gateway/customers"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const countKey = 'ms-customer.sampleCount';",
+                  "const seenKey = 'ms-customer.observedInstances';",
+                  "const count = Number(pm.collectionVariables.get(countKey) || 0);",
+                  "const expected = Number(pm.variables.get('expectedInstances'));",
+                  "const samples = Math.min(20, Math.max(2, Number(pm.variables.get('scalingSamples')) || 6));",
+                  "const instance = pm.response.headers.get('X-Service-Instance');",
+                  "const seen = count === 0 ? [] : JSON.parse(pm.collectionVariables.get(seenKey) || '[]');",
+                  "pm.test('Identificador de instancia presente', () => pm.expect(instance).to.be.a('string').and.not.empty);",
+                  "pm.test('Instancia corresponde a ms-customer', () => pm.expect(typeof instance === 'string' && instance.startsWith('ms-customer:')).to.eql(true));",
+                  "if (instance && !seen.includes(instance)) seen.push(instance);",
+                  "pm.collectionVariables.set(seenKey, JSON.stringify(seen));",
+                  "if (count + 1 < samples) {",
+                  "  pm.collectionVariables.set(countKey, String(count + 1));",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  setTimeout(() => {}, 1000);",
+                  "} else {",
+                  "  pm.collectionVariables.unset(countKey);",
+                  "  pm.test('Se observaron las replicas esperadas', () => {",
+                  "    pm.expect(Number.isInteger(expected) && expected >= 1).to.eql(true);",
+                  "    pm.expect(seen.length).to.be.at.least(expected);",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
         }
       ]
     }
