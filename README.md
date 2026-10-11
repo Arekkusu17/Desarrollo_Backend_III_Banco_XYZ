@@ -6,7 +6,7 @@ Repositorio: [Desarrollo_Backend_III_Banco_XYZ](https://github.com/Arekkusu17/De
 
 ## Arquitectura
 
-![Arquitectura Banco XYZ: canales, microservicios, batch y eventos en EC2](evidencias/00-arquitectura.png)
+![Arquitectura Banco XYZ: canales, microservicios, batch y eventos en EC2](evidencias/00-arquitectura-semana-9.png)
 
 [Abrir diagrama editable en draw.io](evidencias/00-arquitectura.drawio).
 

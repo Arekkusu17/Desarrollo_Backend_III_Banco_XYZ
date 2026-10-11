@@ -220,7 +220,7 @@ Organizacion de las capturas de Semana 9:
 
 | Ubicacion | Contenido |
 | --- | --- |
-| [Arquitectura draw.io](../evidencias/00-arquitectura.drawio) e [imagen](../evidencias/00-arquitectura.png) | Diagrama general del proyecto |
+| [Arquitectura draw.io](../evidencias/00-arquitectura.drawio) e [imagen](../evidencias/00-arquitectura-semana-9.png) | Diagrama general del proyecto |
 | [despliegue](../evidencias/despliegue/) | Configuracion EC2, servicios Docker Compose, Security Group y ZIP en S3 |
 | [pruebas](../evidencias/pruebas/) | Salud, seguridad, BFFs, ATM, clientes, cuentas, pagos, batch y escalabilidad |
 | [Kafka](../evidencias/pruebas/36-logs-kafka.png) | Eventos y consumidores de un retiro |
