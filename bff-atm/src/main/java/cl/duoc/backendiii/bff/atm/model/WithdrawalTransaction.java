@@ -68,6 +68,10 @@ public class WithdrawalTransaction {
         this.message = "Retiro confirmado por saga asincrona";
     }
 
+    public void restoreAuthorizationCode(String code) {
+        this.authorizationCode = code;
+    }
+
     public void cancel(WithdrawalStatus status, String reason) {
         this.status = status;
         this.message = reason;

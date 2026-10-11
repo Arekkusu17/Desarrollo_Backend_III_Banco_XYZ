@@ -20,6 +20,8 @@ import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
+        name = "bank.legacy-withdrawal-listener.enabled", havingValue = "true")
 @Component
 public class WithdrawalFundsListener {
     private static final Logger log = LoggerFactory.getLogger(WithdrawalFundsListener.class);

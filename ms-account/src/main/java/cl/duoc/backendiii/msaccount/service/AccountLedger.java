@@ -101,6 +101,34 @@ public class AccountLedger {
         return find(id, false);
     }
 
+    public BigDecimal reserve(java.util.UUID transactionId, long accountId, BigDecimal amount) {
+        money(amount, false);
+        ManagedAccount account = find(accountId, true);
+        requireActive(account);
+        var existing = jdbc.query("SELECT amount FROM account_reservations WHERE transaction_id=?",
+                (rs, row) -> rs.getBigDecimal(1), transactionId);
+        if (!existing.isEmpty()) return account.balance();
+        if (account.balance().compareTo(amount) < 0) throw error(HttpStatus.CONFLICT, "Saldo insuficiente");
+        jdbc.update("UPDATE bank_accounts SET balance=balance-? WHERE account_id=?", amount, accountId);
+        jdbc.update("INSERT INTO account_reservations(transaction_id, account_id, amount, status) VALUES (?, ?, ?, 'RESERVED')",
+                transactionId, accountId, amount);
+        return account.balance().subtract(amount);
+    }
+
+    public void release(java.util.UUID transactionId, long accountId, BigDecimal amount) {
+        find(accountId, true);
+        int released = jdbc.update("""
+                UPDATE account_reservations SET status='RELEASED'
+                WHERE transaction_id=? AND account_id=? AND amount=? AND status='RESERVED'
+                """, transactionId, accountId, amount);
+        if (released > 0) jdbc.update("UPDATE bank_accounts SET balance=balance+? WHERE account_id=?", amount, accountId);
+    }
+
+    public void confirm(java.util.UUID transactionId) {
+        jdbc.update("UPDATE account_reservations SET status='CONFIRMED' WHERE transaction_id=? AND status='RESERVED'",
+                transactionId);
+    }
+
     public void apply(AccountOperation operation) {
         if (operation == null || operation.operationId() == null || operation.type() == null) {
             throw error(HttpStatus.BAD_REQUEST, "Operacion e identificador requeridos");

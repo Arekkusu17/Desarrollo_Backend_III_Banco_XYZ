@@ -114,6 +114,7 @@ services:
       SPRING_DATASOURCE_USERNAME: banco
       SPRING_DATASOURCE_PASSWORD: banco
       OAUTH_ISSUER_URI: http://auth-server:9000
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
     ports:
       - "8091:8091"
     depends_on:
@@ -235,6 +236,9 @@ services:
       OAUTH_TOKEN_URL: http://auth-server:9000/oauth2/token
       OAUTH_CLIENT_ID: bff-atm
       OAUTH_CLIENT_SECRET: bff-atm-secret
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/banco_xyz
+      SPRING_DATASOURCE_USERNAME: banco
+      SPRING_DATASOURCE_PASSWORD: banco
     ports:
       - "8083:8083"
     depends_on:
@@ -254,6 +258,9 @@ services:
       EUREKA_URL: http://discovery-server:8761/eureka/
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       OAUTH_ISSUER_URI: http://auth-server:9000
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/banco_xyz
+      SPRING_DATASOURCE_USERNAME: banco
+      SPRING_DATASOURCE_PASSWORD: banco
     ports:
       - "8090:8090"
     depends_on:
