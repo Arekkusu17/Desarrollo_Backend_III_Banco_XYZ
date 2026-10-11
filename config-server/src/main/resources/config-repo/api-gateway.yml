@@ -19,6 +19,12 @@ spring:
       server:
         webflux:
           routes:
+            - id: ms-account
+              uri: lb://ms-account
+              predicates:
+                - Path=/gateway/cuentas,/gateway/cuentas/**
+              filters:
+                - RewritePath=/gateway/cuentas(?<segment>.*), /api/cuentas$\{segment}
             - id: bff-web
               uri: lb://bff-web
               predicates:
