@@ -1,0 +1,95 @@
+x-tls-env: &tls-env
+  SERVER_SSL_ENABLED: "true"
+  SERVER_SSL_KEY_STORE: file:/tls/bank.p12
+  SERVER_SSL_KEY_STORE_PASSWORD: ${TLS_STORE_PASSWORD:-changeit}
+  SERVER_SSL_KEY_STORE_TYPE: PKCS12
+  SERVER_SSL_KEY_ALIAS: bff-local
+  JAVA_TOOL_OPTIONS: "-Djavax.net.ssl.trustStore=/tls/truststore.p12 -Djavax.net.ssl.trustStorePassword=${TLS_STORE_PASSWORD:-changeit} -Djavax.net.ssl.trustStoreType=PKCS12"
+  OAUTH_ISSUER_URI: https://auth-server:9000
+  OAUTH_TOKEN_URL: https://auth-server:9000/oauth2/token
+
+x-tls-volumes: &tls-volumes
+  - ./output/tls:/tls:ro
+
+services:
+  auth-server:
+    environment:
+      <<: *tls-env
+      OAUTH_ISSUER: https://auth-server:9000
+    volumes: *tls-volumes
+  api-gateway:
+    environment:
+      <<: *tls-env
+      SPRING_CLOUD_GATEWAY_SERVER_WEBFLUX_HTTPCLIENT_SSL_TRUSTED_X509_CERTIFICATES: /tls/bank.crt
+    volumes: *tls-volumes
+  bff-web:
+    environment:
+      <<: *tls-env
+      BFF_SSL_ENABLED: "true"
+      ACCOUNT_SERVICE_URL: https://ms-account
+      EUREKA_INSTANCE_HOSTNAME: bff-web
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "false"
+      EUREKA_INSTANCE_SECURE_PORT_ENABLED: "true"
+      EUREKA_INSTANCE_NON_SECURE_PORT_ENABLED: "false"
+      EUREKA_INSTANCE_SECURE_PORT: "8081"
+    volumes: *tls-volumes
+  bff-mobile:
+    environment:
+      <<: *tls-env
+      BFF_SSL_ENABLED: "true"
+      ACCOUNT_SERVICE_URL: https://ms-account
+      EUREKA_INSTANCE_HOSTNAME: bff-mobile
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "false"
+      EUREKA_INSTANCE_SECURE_PORT_ENABLED: "true"
+      EUREKA_INSTANCE_NON_SECURE_PORT_ENABLED: "false"
+      EUREKA_INSTANCE_SECURE_PORT: "8082"
+    volumes: *tls-volumes
+  bff-atm:
+    environment:
+      <<: *tls-env
+      BFF_SSL_ENABLED: "true"
+      ACCOUNT_SERVICE_URL: https://ms-account
+      EUREKA_INSTANCE_HOSTNAME: bff-atm
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "false"
+      EUREKA_INSTANCE_SECURE_PORT_ENABLED: "true"
+      EUREKA_INSTANCE_NON_SECURE_PORT_ENABLED: "false"
+      EUREKA_INSTANCE_SECURE_PORT: "8083"
+    volumes: *tls-volumes
+  ms-account:
+    environment:
+      <<: *tls-env
+      EUREKA_INSTANCE_HOSTNAME: ms-account
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "false"
+      EUREKA_INSTANCE_SECURE_PORT_ENABLED: "true"
+      EUREKA_INSTANCE_NON_SECURE_PORT_ENABLED: "false"
+      EUREKA_INSTANCE_SECURE_PORT: "8091"
+    volumes: *tls-volumes
+  ms-payment:
+    environment:
+      <<: *tls-env
+      ACCOUNT_SERVICE_URL: https://ms-account
+      EUREKA_INSTANCE_HOSTNAME: ms-payment
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "false"
+      EUREKA_INSTANCE_SECURE_PORT_ENABLED: "true"
+      EUREKA_INSTANCE_NON_SECURE_PORT_ENABLED: "false"
+      EUREKA_INSTANCE_SECURE_PORT: "8092"
+    volumes: *tls-volumes
+  ms-customer:
+    environment:
+      <<: *tls-env
+      EUREKA_INSTANCE_HOSTNAME: ms-customer
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "false"
+      EUREKA_INSTANCE_SECURE_PORT_ENABLED: "true"
+      EUREKA_INSTANCE_NON_SECURE_PORT_ENABLED: "false"
+      EUREKA_INSTANCE_SECURE_PORT: "8093"
+    volumes: *tls-volumes
+  batch-service:
+    environment:
+      JAVA_TOOL_OPTIONS: "-Djavax.net.ssl.trustStore=/tls/truststore.p12 -Djavax.net.ssl.trustStorePassword=${TLS_STORE_PASSWORD:-changeit} -Djavax.net.ssl.trustStoreType=PKCS12"
+      OAUTH_ISSUER_URI: https://auth-server:9000
+    volumes: *tls-volumes
+  risk-service:
+    environment:
+      JAVA_TOOL_OPTIONS: "-Djavax.net.ssl.trustStore=/tls/truststore.p12 -Djavax.net.ssl.trustStorePassword=${TLS_STORE_PASSWORD:-changeit} -Djavax.net.ssl.trustStoreType=PKCS12"
+      OAUTH_ISSUER_URI: https://auth-server:9000
+    volumes: *tls-volumes
