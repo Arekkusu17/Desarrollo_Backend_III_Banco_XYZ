@@ -14,6 +14,7 @@ public class SecurityConfig {
         return http
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
+                        .dispatcherTypeMatchers(jakarta.servlet.DispatcherType.ERROR).permitAll()
                         .requestMatchers("/actuator/health", "/actuator/info").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/cuentas/operaciones").hasAuthority("SCOPE_account.execute")
                         .requestMatchers(HttpMethod.POST, "/api/cuentas/**").hasAuthority("SCOPE_account.write")

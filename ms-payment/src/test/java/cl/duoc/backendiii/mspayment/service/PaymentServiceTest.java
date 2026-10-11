@@ -85,7 +85,7 @@ class PaymentServiceTest {
     private static class FakeAccountClient extends AccountClient {
         private int executions;
         private boolean fail;
-        FakeAccountClient() { super(null); }
+        FakeAccountClient() { super(null, 3, 0, 5, 3, 10); }
         @Override
         public void execute(PaymentOperationResponse operation) {
             if (fail) throw new org.springframework.web.server.ResponseStatusException(
