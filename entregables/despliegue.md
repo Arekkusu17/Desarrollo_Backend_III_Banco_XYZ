@@ -157,6 +157,8 @@ Importarlo como CA en Postman. No descargar ni compartir bank.p12 o truststore.p
 
 Configurar la coleccion existente:
 
+Importar tambien `postman/Banco_XYZ_EC2_Semana_9.postman_environment.json` y seleccionar el entorno EC2. Incluye la IP actual 34.229.100.153; la tabla siguiente permite ajustarla si cambia.
+
 | Variable | Valor EC2 |
 | --- | --- |
 | authBaseUrl | https://IP_PUBLICA_EC2:9001 |
@@ -211,6 +213,8 @@ done
 ```
 
 Resultado esperado: al menos dos valores distintos de X-Service-Instance para cada microservicio. Conservar tambien el listado Eureka y Compose. Mientras esta activo el override, 8091/8092/8093 no estan publicados: usar Gateway; no correr las requests directas de la coleccion en ese modo.
+
+La carpeta Postman `28 - Escalabilidad por Gateway (opcional)` realiza esta comprobacion con seis muestras por servicio. Obtener primero el token 02, activar `enableScalingChecks=true`, dejar `expectedInstances=2` y ejecutar solo la carpeta 28 en Runner. Al volver a una replica, desactivar el flag o ajustar expectedInstances a 1. La carpeta no crea ni elimina replicas.
 
 Volver a una replica manteniendo el override:
 

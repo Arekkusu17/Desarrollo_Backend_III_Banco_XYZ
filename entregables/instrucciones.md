@@ -77,6 +77,8 @@ Importar `postman/Banco_XYZ_Semana_8.postman_collection.json`. Se conserva el no
 
 En HTTPS ajustar `authBaseUrl`, `gatewayBaseUrl`, `accountServiceBaseUrl`, `paymentServiceBaseUrl`, `customerServiceBaseUrl` a https y los puertos de la instancia. `riskBaseUrl` sigue en http:8090. Importar `bank.crt` como CA en Postman; deshabilitar validacion SSL solo como alternativa temporal y declarada de laboratorio.
 
+Para la EC2 actual, importar tambien `postman/Banco_XYZ_EC2_Semana_9.postman_environment.json` y seleccionar ese entorno. Ya contiene las URLs de 34.229.100.153. No incluye JWT ni certificados privados; actualizar las URLs si cambia la IP.
+
 Ejecutar la coleccion con un intervalo de 1000 ms y repetir las consultas asincronas hasta el estado terminal:
 
 1. Health, token, 401, 403 y dashboard Web.
@@ -86,7 +88,25 @@ Ejecutar la coleccion con un intervalo de 1000 ms y repetir las consultas asincr
 5. Deposito, transferencia y listado por Gateway.
 6. Crear/consultar cliente y listado por Gateway.
 
-La coleccion no cubre por si sola todo el CRUD de cuentas, idempotencia, BFF Mobile ni recuperacion batch. Completar manualmente:
+La coleccion contiene 54 requests. Ademas de las 23 originales, incluye:
+
+- `24`: BFF Mobile.
+- Carpeta `25`: apertura, mantenimiento, consulta y cierre de cuenta con saldo cero; rechazo de escritura por scope.
+- Carpeta `26`: deposito idempotente, conflicto por reutilizar clave con otro cuerpo, transferencia, fondos insuficientes, pago y saldos antes/despues. Usa dos cuentas nuevas por ejecucion, sin modificar las cuentas base; conserva datos de laboratorio.
+- Carpeta `27`: health, conteos, transacciones y rechazos batch por API. Opcional, activar `enableBatchChecks=true`.
+- Carpeta `28`: distribucion por `X-Service-Instance` para los tres microservicios. Opcional, activar `enableScalingChecks=true` y ejecutar solo esta carpeta despues del token 02 y del escalado Docker. `expectedInstances=2`, seis muestras por servicio.
+
+Ejecutar cada carpeta en orden; no enviar solicitudes de escritura dependientes de forma aislada. Antes de repetir una carpeta de escalabilidad interrumpida, borrar sus variables `ms-account.sampleCount`, `ms-payment.sampleCount`, `ms-customer.sampleCount` en la coleccion. Los cambios a estas variables se describen en [Postman scripts](https://learning.postman.com/v11/docs/tests-and-scripts/write-scripts/postman-sandbox-reference/pm-execution).
+
+Para batch desde Postman en el equipo local, mantener este tunel abierto:
+
+```bash
+ssh -i llave.pem -N -L 127.0.0.1:18080:localhost:8080 ec2-user@34.229.100.153
+```
+
+El entorno EC2 usa `batchBaseUrl=http://localhost:18080`. La carpeta obtiene un token core.read con el cliente bff-web de laboratorio. No abrir 8080 en el Security Group. Los conteos HTTP no prueban por si solos los estados de los jobs, sus checkpoints, la correccion completa de los resultados ni la generacion del CSV.
+
+Las verificaciones cubiertas por las nuevas requests y las que aun requieren revision manual son:
 
 | Caso | Verificacion |
 | --- | --- |
