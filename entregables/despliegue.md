@@ -199,7 +199,7 @@ scp -i llave.pem ec2-user@34.229.100.153:~/banco-xyz-semana-9/output/tls/bank.cr
 
 En Postman, Settings > Certificates > CA Certificates: activar e importar banco-xyz-ec2.pem. Mantener SSL certificate verification activado.
 
-Importar la [coleccion](../postman/Banco_XYZ_Semana_8.postman_collection.json) y el [environment EC2](../postman/Banco_XYZ_EC2_Semana_9.postman_environment.json). Seleccionar el entorno y actualizar URLs si cambia la IP.
+Importar la [coleccion](../postman/Banco_XYZ_Semana_9.postman_collection.json) y el [environment EC2](../postman/Banco_XYZ_EC2_Semana_9.postman_environment.json). Seleccionar el entorno y actualizar URLs si cambia la IP.
 
 Seguir los bloques de [instrucciones](instrucciones.md#5-postman-y-regresion-funcional), incluidos SQL/CSV batch. Validar primero con una instancia y luego escalar. Batch se consulta por tunel en localhost:18080; desactivar la falla de riesgo al terminar.
 

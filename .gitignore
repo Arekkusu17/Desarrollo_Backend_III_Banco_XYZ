@@ -5,3 +5,4 @@ output/
 *.iml
 .DS_Store
 /scripts/verify-eft.sh
+*.drawio.bkp
