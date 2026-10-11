@@ -17,6 +17,7 @@
         <module>auth-server</module>
         <module>api-gateway</module>
         <module>shared-events</module>
+        <module>ms-account</module>
         <module>core-banking</module>
         <module>bff-common</module>
         <module>bff-web</module>
