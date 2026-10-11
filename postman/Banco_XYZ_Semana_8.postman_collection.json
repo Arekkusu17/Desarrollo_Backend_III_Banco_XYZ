@@ -39,7 +39,7 @@
     },
     {
       "key": "accountId",
-      "value": "101"
+      "value": "119"
     },
     {
       "key": "withdrawalAmount",
@@ -67,7 +67,7 @@
     },
     {
       "key": "targetAccountId",
-      "value": "102"
+      "value": "121"
     },
     {
       "key": "paymentAmount",
@@ -83,11 +83,11 @@
     },
     {
       "key": "customerId",
-      "value": "101"
+      "value": "119"
     },
     {
       "key": "customerName",
-      "value": "Alex Fernandez"
+      "value": "Alice Brown"
     },
     {
       "key": "batchBaseUrl",
@@ -116,6 +116,22 @@
     {
       "key": "scalingSamples",
       "value": "6"
+    },
+    {
+      "key": "customerEmail",
+      "value": "alice.brown@example.com"
+    },
+    {
+      "key": "customerPhone",
+      "value": "+56912345678"
+    },
+    {
+      "key": "customerSegment",
+      "value": "premium"
+    },
+    {
+      "key": "customerStatus",
+      "value": "active"
     }
   ],
   "item": [
@@ -394,6 +410,11 @@
               "});",
               "pm.test('Dashboard indica canal WEB', function () {",
               "  pm.expect(pm.response.json().channel).to.eql('WEB');",
+              "});",
+              "pm.test('Backend disponible y cuenta real', function () {",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.backendStatus).to.eql('CORE_BANKING_DISPONIBLE');",
+              "  pm.expect(json.account !== null && json.account.accountId === Number(pm.variables.get('accountId'))).to.eql(true);",
               "});"
             ]
           }
@@ -797,7 +818,7 @@
               "pm.test('ms-account retorna saldo', function () {",
               "  pm.response.to.have.status(200);",
               "  const json = pm.response.json();",
-              "  pm.expect(json.accountId).to.eql(Number(pm.collectionVariables.get('accountId') || pm.variables.get('accountId')));",
+              "  pm.expect(json.accountId).to.eql(Number(pm.variables.get('accountId')));",
               "  pm.expect(json.availableBalance).to.exist;",
               "});"
             ]
@@ -1032,7 +1053,7 @@
         },
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"customerId\": {{customerId}},\n  \"fullName\": \"{{customerName}}\",\n  \"email\": \"alex.fernandez@example.com\",\n  \"phone\": \"+56912345678\",\n  \"segment\": \"premium\",\n  \"status\": \"active\"\n}",
+          "raw": "{\n  \"customerId\": {{customerId}},\n  \"fullName\": \"{{customerName}}\",\n  \"email\": \"{{customerEmail}}\",\n  \"phone\": \"{{customerPhone}}\",\n  \"segment\": \"{{customerSegment}}\",\n  \"status\": \"{{customerStatus}}\"\n}",
           "options": {
             "raw": {
               "language": "json"
@@ -1050,7 +1071,7 @@
               "  pm.response.to.have.status(201);",
               "  const json = pm.response.json();",
               "  pm.expect(json.customerId).to.eql(Number(pm.variables.get('customerId')));",
-              "  pm.expect(json.segment).to.eql('PREMIUM');",
+              "  pm.expect(json.segment).to.eql(String(pm.variables.get('customerSegment')).toUpperCase());",
               "});"
             ]
           }

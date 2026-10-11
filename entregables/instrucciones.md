@@ -62,7 +62,7 @@ TOKEN=$(curl --fail --silent --show-error --cacert output/tls/bank.crt \
   https://localhost:9001/oauth2/token | jq -er '.access_token')
 curl --fail --cacert output/tls/bank.crt \
   -H "Authorization: Bearer $TOKEN" \
-  https://localhost:8084/gateway/cuentas/101/saldo
+  https://localhost:8084/gateway/cuentas/119/saldo
 ```
 
 Si no se configuro 9001, usar 9000. Para HTTP local quitar `--cacert` y cambiar el esquema.
@@ -77,7 +77,9 @@ Importar `postman/Banco_XYZ_Semana_8.postman_collection.json`. Se conserva el no
 
 En HTTPS ajustar `authBaseUrl`, `gatewayBaseUrl`, `accountServiceBaseUrl`, `paymentServiceBaseUrl`, `customerServiceBaseUrl` a https y los puertos de la instancia. `riskBaseUrl` sigue en http:8090. Importar `bank.crt` como CA en Postman; deshabilitar validacion SSL solo como alternativa temporal y declarada de laboratorio.
 
-Para la EC2 actual, importar tambien `postman/Banco_XYZ_EC2_Semana_9.postman_environment.json` y seleccionar ese entorno. Ya contiene las URLs de 34.229.100.153. No incluye JWT ni certificados privados; actualizar las URLs si cambia la IP.
+Para la EC2 actual, importar tambien `postman/Banco_XYZ_EC2_Semana_9.postman_environment.json` y seleccionar ese entorno. Contiene todas las variables de entrada: URLs de 34.229.100.153, accountId=119, targetAccountId=121, cliente 119/Alice Brown, montos, PIN y credenciales publicas de laboratorio. No incluye JWT, variables de salida ni certificados privados; actualizar las URLs si cambia la IP. Los IDs 101/102 del ejemplo anterior no se importan con los CSV EFT actuales; 119/121 tienen registros iniciales validos de ahorro.
+
+Reimportar la coleccion junto con el entorno, reemplazar las versiones anteriores y ejecutar nuevamente el token 02. El test 06 ahora exige backend disponible y cuenta poblada; una respuesta fallback HTTP 200 no aprueba la prueba funcional.
 
 Ejecutar la coleccion con un intervalo de 1000 ms y repetir las consultas asincronas hasta el estado terminal:
 
@@ -111,7 +113,7 @@ Las verificaciones cubiertas por las nuevas requests y las que aun requieren rev
 | Caso | Verificacion |
 | --- | --- |
 | Cuentas | POST /gateway/cuentas, PUT /gateway/cuentas/{id}, GET /gateway/cuentas/{id}/gestion y POST /gateway/cuentas/{id}/cierre; usar IDs nuevos, cierre con saldo cero y account.write |
-| Mobile | GET /gateway/mobile/cuentas/101/inicio; respuesta adaptada al canal |
+| Mobile | GET /gateway/mobile/cuentas/119/inicio; respuesta adaptada al canal |
 | Pagos | El deposito aumenta saldo, la transferencia debita origen y acredita destino |
 | Idempotencia | Repetir un POST con el mismo Idempotency-Key y el mismo cuerpo: misma operacion y saldo modificado una sola vez |
 | Fondos insuficientes | Rechazo sin saldo negativo ni abono parcial en destino |
