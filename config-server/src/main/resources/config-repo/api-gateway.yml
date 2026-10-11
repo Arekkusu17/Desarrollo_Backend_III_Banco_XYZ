@@ -43,6 +43,12 @@ spring:
                 - Path=/gateway/payments/**
               filters:
                 - RewritePath=/gateway/payments/(?<segment>.*), /api/payments/$\{segment}
+            - id: ms-customer
+              uri: lb://ms-customer
+              predicates:
+                - Path=/gateway/customers/**
+              filters:
+                - RewritePath=/gateway/customers/(?<segment>.*), /api/customers/$\{segment}
 
 management:
   endpoints:

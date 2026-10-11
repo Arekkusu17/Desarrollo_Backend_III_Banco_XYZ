@@ -18,6 +18,7 @@ public class SecurityConfig {
                         .pathMatchers("/gateway/mobile/**").hasAuthority("SCOPE_mobile.read")
                         .pathMatchers("/gateway/atm/**").hasAnyAuthority("SCOPE_atm.read", "SCOPE_atm.write")
                         .pathMatchers("/gateway/payments/**").hasAnyAuthority("SCOPE_payment.read", "SCOPE_payment.write")
+                        .pathMatchers("/gateway/customers/**").hasAnyAuthority("SCOPE_customer.read", "SCOPE_customer.write")
                         .anyExchange().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> {}))
                 .build();

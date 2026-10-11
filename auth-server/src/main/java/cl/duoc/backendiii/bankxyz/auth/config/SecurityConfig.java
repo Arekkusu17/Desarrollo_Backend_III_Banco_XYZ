@@ -67,6 +67,8 @@ public class SecurityConfig {
                 .scope("risk.read")
                 .scope("payment.read")
                 .scope("payment.write")
+                .scope("customer.read")
+                .scope("customer.write")
                 .build();
 
         RegisteredClient bffWeb = client("bff-web", bffWebSecret, tokenSettings)
