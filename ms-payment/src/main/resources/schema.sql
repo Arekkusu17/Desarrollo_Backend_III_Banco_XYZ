@@ -8,3 +8,8 @@ CREATE TABLE IF NOT EXISTS payment_operations (
     description VARCHAR(255) NOT NULL,
     created_at TIMESTAMP NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS payment_outbox (
+    operation_id UUID PRIMARY KEY REFERENCES payment_operations(operation_id),
+    published BOOLEAN NOT NULL DEFAULT FALSE
+);

@@ -26,13 +26,25 @@ public class RejectedRecordWriter {
 
     public void reject(RejectedRecord rejectedRecord) {
         jdbcTemplate.update("""
-                INSERT INTO rejected_records(process_name, record_key, reason, payload)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO rejected_records(process_name, record_key, reason, payload, fingerprint)
+                VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING
                 """,
                 limit(rejectedRecord.processName(), processNameLimit),
                 limit(rejectedRecord.recordKey(), recordKeyLimit),
                 limit(rejectedRecord.reason(), reasonLimit),
-                rejectedRecord.payload());
+                rejectedRecord.payload(),
+                fingerprint(rejectedRecord));
+    }
+
+    private String fingerprint(RejectedRecord record) {
+        try {
+            String value = record.processName() + "\u001f" + record.recordKey() + "\u001f" + record.reason()
+                    + "\u001f" + record.payload();
+            return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(value.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        } catch (java.security.NoSuchAlgorithmException ex) {
+            throw new IllegalStateException(ex);
+        }
     }
 
     private String limit(String value, int maxLength) {

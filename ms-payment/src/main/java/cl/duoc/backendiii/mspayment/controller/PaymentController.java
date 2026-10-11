@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -37,17 +38,24 @@ public class PaymentController {
     }
 
     @PostMapping("/payments")
-    public ResponseEntity<PaymentOperationResponse> processPayment(@RequestBody PaymentRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(service.processPayment(request));
+    public ResponseEntity<PaymentOperationResponse> processPayment(@RequestBody PaymentRequest request,
+            @RequestHeader(value = "Idempotency-Key", required = false) UUID id) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(service.processPayment(request, key(id)));
     }
 
     @PostMapping("/deposits")
-    public ResponseEntity<PaymentOperationResponse> deposit(@RequestBody PaymentRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(service.deposit(request));
+    public ResponseEntity<PaymentOperationResponse> deposit(@RequestBody PaymentRequest request,
+            @RequestHeader(value = "Idempotency-Key", required = false) UUID id) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(service.deposit(request, key(id)));
     }
 
     @PostMapping("/transfers")
-    public ResponseEntity<PaymentOperationResponse> transfer(@RequestBody PaymentRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(service.transfer(request));
+    public ResponseEntity<PaymentOperationResponse> transfer(@RequestBody PaymentRequest request,
+            @RequestHeader(value = "Idempotency-Key", required = false) UUID id) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(service.transfer(request, key(id)));
+    }
+
+    private UUID key(UUID id) {
+        return id == null ? UUID.randomUUID() : id;
     }
 }

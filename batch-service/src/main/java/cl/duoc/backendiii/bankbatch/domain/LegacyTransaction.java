@@ -6,6 +6,10 @@ public record LegacyTransaction(
         String id,
         String date,
         String amount,
-        String type
+        String type,
+        Boolean sourceDuplicate
 ) {
+    public LegacyTransaction(String id, String date, String amount, String type) {
+        this(id, date, amount, type, null);
+    }
 }

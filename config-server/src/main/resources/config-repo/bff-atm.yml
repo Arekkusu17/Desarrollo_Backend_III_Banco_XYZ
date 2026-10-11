@@ -12,6 +12,11 @@ core:
     url: ${ACCOUNT_SERVICE_URL:http://ms-account}
 
 spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${OAUTH_ISSUER_URI:http://auth-server:9000}
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     consumer:
@@ -38,13 +43,6 @@ app:
     client-id: ${OAUTH_CLIENT_ID:bff-atm}
     client-secret: ${OAUTH_CLIENT_SECRET:bff-atm-secret}
     core-scope: account.read
-
-spring:
-  security:
-    oauth2:
-      resourceserver:
-        jwt:
-          issuer-uri: ${OAUTH_ISSUER_URI:http://auth-server:9000}
 
 eureka:
   client:

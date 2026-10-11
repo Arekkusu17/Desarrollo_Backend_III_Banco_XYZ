@@ -55,7 +55,7 @@ class AccountServiceTest {
         private int lastMovementLimit;
 
         FakeAccountRepository() {
-            super(null);
+            super(null, null);
         }
 
         @Override
