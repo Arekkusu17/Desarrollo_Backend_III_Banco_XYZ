@@ -93,7 +93,7 @@ Los secretos incluidos son de laboratorio. Este procedimiento no convierte la co
 
 ## 5. Postman y regresion funcional
 
-1. Importar la [coleccion Semana 9](../postman/Banco_XYZ_Semana_8.postman_collection.json) (conserva el nombre de archivo Semana_8; contiene 54 requests) y el [environment EC2](../postman/Banco_XYZ_EC2_Semana_9.postman_environment.json).
+1. Importar la [coleccion Semana 9](../postman/Banco_XYZ_Semana_9.postman_collection.json) (contiene 54 requests) y el [environment EC2](../postman/Banco_XYZ_EC2_Semana_9.postman_environment.json).
 2. Seleccionar el entorno EC2: IP 34.229.100.153, cuentas 119/121 y cliente 119/Alice Brown. Actualizar URLs si cambia la IP; los antiguos IDs 101/102 no tienen cuentas validas en esta importacion.
 3. Importar bank.crt o banco-xyz-ec2.pem en Settings > Certificates > CA Certificates; mantener SSL certificate verification activado. No usar Client Certificates ni introducir claves privadas.
 4. Obtener tokens nuevos con 02 y 04. Se guardan en la coleccion, no en el environment.
