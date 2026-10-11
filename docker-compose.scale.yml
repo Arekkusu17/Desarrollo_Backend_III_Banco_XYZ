@@ -1,15 +1,21 @@
 services:
   ms-account:
+    environment:
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
     container_name: !reset null
     ports: !override []
     deploy:
       replicas: 2
   ms-payment:
+    environment:
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
     container_name: !reset null
     ports: !override []
     deploy:
       replicas: 2
   ms-customer:
+    environment:
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
     container_name: !reset null
     ports: !override []
     deploy:
