@@ -68,6 +68,7 @@ services:
       OAUTH_BFF_WEB_SECRET: bff-web-secret
       OAUTH_BFF_MOBILE_SECRET: bff-mobile-secret
       OAUTH_BFF_ATM_SECRET: bff-atm-secret
+      OAUTH_PAYMENT_SECRET: payment-secret
     ports:
       - "${AUTH_SERVER_PORT:-9000}:9000"
     depends_on:
@@ -137,6 +138,10 @@ services:
       SPRING_DATASOURCE_USERNAME: banco
       SPRING_DATASOURCE_PASSWORD: banco
       OAUTH_ISSUER_URI: http://auth-server:9000
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      ACCOUNT_SERVICE_URL: http://ms-account
+      OAUTH_TOKEN_URL: http://auth-server:9000/oauth2/token
+      OAUTH_PAYMENT_SECRET: payment-secret
     ports:
       - "8092:8092"
     depends_on:

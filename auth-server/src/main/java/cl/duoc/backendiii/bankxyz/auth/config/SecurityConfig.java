@@ -54,7 +54,8 @@ public class SecurityConfig {
             @Value("${oauth.clients.demo.secret}") String demoSecret,
             @Value("${oauth.clients.bff-web.secret}") String bffWebSecret,
             @Value("${oauth.clients.bff-mobile.secret}") String bffMobileSecret,
-            @Value("${oauth.clients.bff-atm.secret}") String bffAtmSecret) {
+            @Value("${oauth.clients.bff-atm.secret}") String bffAtmSecret,
+            @Value("${oauth.clients.payment.secret:payment-secret}") String paymentSecret) {
         TokenSettings tokenSettings = TokenSettings.builder()
                 .accessTokenTimeToLive(Duration.ofMinutes(30))
                 .build();
@@ -89,7 +90,7 @@ public class SecurityConfig {
                 .scope("account.read")
                 .build();
 
-        RegisteredClient payments = client("ms-payment", bffAtmSecret, tokenSettings)
+        RegisteredClient payments = client("ms-payment", paymentSecret, tokenSettings)
                 .scope("account.execute")
                 .build();
         return new InMemoryRegisteredClientRepository(demoClient, bffWeb, bffMobile, bffAtm, payments);

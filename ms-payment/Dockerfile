@@ -18,6 +18,7 @@ COPY risk-service/pom.xml risk-service/pom.xml
 COPY notification-service/pom.xml notification-service/pom.xml
 RUN mvn -q -pl ms-payment -am -DskipTests dependency:go-offline
 COPY ms-payment/src ms-payment/src
+COPY shared-events/src shared-events/src
 RUN mvn -q -pl ms-payment -am -DskipTests package
 
 FROM eclipse-temurin:21-jre
