@@ -14,7 +14,7 @@ public class SecurityConfig {
         return http
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/actuator/**").permitAll()
+                        .requestMatchers("/actuator/health", "/actuator/info").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/payments/**").hasAuthority("SCOPE_payment.read")
                         .requestMatchers(HttpMethod.POST, "/api/payments/**").hasAuthority("SCOPE_payment.write")
                         .anyRequest().authenticated())

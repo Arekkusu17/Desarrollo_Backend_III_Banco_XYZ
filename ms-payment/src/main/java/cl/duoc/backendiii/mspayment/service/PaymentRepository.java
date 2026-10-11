@@ -25,7 +25,7 @@ public class PaymentRepository {
         jdbcTemplate.update("""
                 INSERT INTO payment_operations(operation_id, operation_type, source_account_id,
                                                target_account_id, amount, status, description, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING
                 """,
                 operation.operationId(),
                 operation.type().name(),
@@ -35,7 +35,21 @@ public class PaymentRepository {
                 operation.status().name(),
                 operation.description(),
                 Timestamp.valueOf(operation.createdAt()));
-        return operation;
+        return findById(operation.operationId()).orElseThrow();
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    public PaymentOperationResponse complete(UUID id) {
+        int changed = jdbcTemplate.update(
+                "UPDATE payment_operations SET status='ACCEPTED' WHERE operation_id=? AND status='PENDING'", id);
+        if (changed > 0) {
+            jdbcTemplate.update("INSERT INTO payment_outbox(operation_id) VALUES (?) ON CONFLICT DO NOTHING", id);
+        }
+        return findById(id).orElseThrow();
+    }
+
+    public void reject(UUID id) {
+        jdbcTemplate.update("UPDATE payment_operations SET status='REJECTED' WHERE operation_id=? AND status='PENDING'", id);
     }
 
     public Optional<PaymentOperationResponse> findById(UUID operationId) {
