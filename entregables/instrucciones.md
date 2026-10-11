@@ -4,6 +4,8 @@
 
 Trabajar con `feature/eft-compliance` mientras el PR no este aprobado. Requisitos: Java 21, Docker, Compose 2.24.4 o posterior, curl, jq y Postman. No usar un volumen con datos importantes para pruebas destructivas.
 
+La validacion funcional en EC2 y la carpeta 28 de escalabilidad se completaron el 11 de octubre de 2026, segun las corridas y capturas obtenidas. Esta guia permite reproducirlas; repetir escrituras modifica datos. El informe tecnico y el video siguen pendientes.
+
 ```bash
 git clone --branch feature/eft-compliance https://github.com/Arekkusu17/Desarrollo_Backend_III_Banco_XYZ.git
 cd Desarrollo_Backend_III_Banco_XYZ
@@ -27,14 +29,16 @@ docker compose ps
 Para HTTPS de laboratorio, con una instancia por microservicio:
 
 ```bash
-export TLS_STORE_PASSWORD='reemplazar-por-clave-de-laboratorio'
+read -rsp 'Clave para el almacen TLS: ' TLS_STORE_PASSWORD
+export TLS_STORE_PASSWORD
+printf '\n'
 TLS_COPY_BFF=false bash scripts/generar-certificados.sh
 export COMPOSE_FILE=docker-compose.yml:docker-compose.secure.yml
 docker compose up -d --build --remove-orphans
 curl --cacert output/tls/bank.crt https://localhost:8084/actuator/health
 ```
 
-Los certificados son autofirmados y sirven para la demostracion, no para produccion. Se conservan si ya existen; no cambiar la clave o los SAN sin regenerarlos en una carpeta nueva. Nunca empaquetar ni publicar la clave privada.
+Certificados autofirmados de laboratorio: el script conserva los existentes. Para rotacion y cobertura TLS de replicas, seguir [despliegue](despliegue.md#5-certificados-y-arranque-https). Nunca publicar la clave privada; reimportar la CA en Postman tras regenerarla.
 
 El Gateway, Auth Server, BFFs y los tres microservicios usan HTTPS con el override seguro. Risk, Batch y Notification siguen con HTTP en sus puertos; Eureka y Config Server tambien. JWT se valida contra el emisor interno `https://auth-server:9000`, aunque el cliente obtenga el token mediante localhost o la IP EC2.
 
@@ -42,13 +46,29 @@ El Gateway, Auth Server, BFFs y los tres microservicios usan HTTPS con el overri
 
 ```bash
 docker compose ps
-docker compose logs --tail=100 config-server discovery-server auth-server api-gateway
-curl --cacert output/tls/bank.crt https://localhost:8091/actuator/health
-curl --cacert output/tls/bank.crt https://localhost:8092/actuator/health
-curl --cacert output/tls/bank.crt https://localhost:8093/actuator/health
+curl --fail --cacert output/tls/bank.crt https://localhost:8084/actuator/health
 ```
 
-Esperar salud UP y registro en Eureka; estar Running no implica estar listo. El tiempo varia segun recursos, descargas y propagacion. Un 404 inicial amerita revisar rutas, logs y registro, no asumir inmediatamente un error de endpoint. Si el Gateway arranco con configuracion incompleta, reiniciarlo despues de que Config Server este disponible.
+| Comprobacion | Resultado esperado |
+| --- | --- |
+| Gateway | status UP |
+| clientConfigServer | UP; fuente configserver:classpath:/config-repo/api-gateway.yml |
+| Eureka | Servicios UP; dos instancias por microservicio durante el escalado |
+| Backend Web/Mobile | Datos reales; no respuesta fallback |
+
+Running no implica listo. En modo escalado consultar por Gateway, no por los puertos directos 8091/8092/8093.
+
+<details>
+<summary>Gateway sin rutas, Config Server UNKNOWN o timeout</summary>
+
+```bash
+curl --fail http://localhost:8888/actuator/health
+curl --fail http://localhost:8888/api-gateway/default
+```
+
+Si Config Server ya devuelve las rutas en propertySources y el Gateway no las cargo, ejecutar docker compose restart api-gateway y repetir su health. Config Server no aparece como cliente en Eureka. Un timeout TCP desde Postman, con localhost disponible, requiere revisar conectividad y Security Group antes de atribuirlo al certificado.
+
+</details>
 
 ## 4. Token y seguridad
 
@@ -73,55 +93,70 @@ Los secretos incluidos son de laboratorio. Este procedimiento no convierte la co
 
 ## 5. Postman y regresion funcional
 
-Importar `postman/Banco_XYZ_Semana_8.postman_collection.json`. Se conserva el nombre del archivo; el titulo de la coleccion es Banco XYZ - Semana 9 - Microservicios EFT.
+1. Importar la [coleccion Semana 9](../postman/Banco_XYZ_Semana_8.postman_collection.json) (conserva el nombre de archivo Semana_8; contiene 54 requests) y el [environment EC2](../postman/Banco_XYZ_EC2_Semana_9.postman_environment.json).
+2. Seleccionar el entorno EC2: IP 34.229.100.153, cuentas 119/121 y cliente 119/Alice Brown. Actualizar URLs si cambia la IP; los antiguos IDs 101/102 no tienen cuentas validas en esta importacion.
+3. Importar bank.crt o banco-xyz-ec2.pem en Settings > Certificates > CA Certificates; mantener SSL certificate verification activado. No usar Client Certificates ni introducir claves privadas.
+4. Obtener tokens nuevos con 02 y 04. Se guardan en la coleccion, no en el environment.
 
-En HTTPS ajustar `authBaseUrl`, `gatewayBaseUrl`, `accountServiceBaseUrl`, `paymentServiceBaseUrl`, `customerServiceBaseUrl` a https y los puertos de la instancia. `riskBaseUrl` sigue en http:8090. Importar `bank.crt` como CA en Postman; deshabilitar validacion SSL solo como alternativa temporal y declarada de laboratorio.
+Para pruebas locales ajustar las URLs: HTTPS en Auth/Gateway/microservicios y HTTP en Risk. El test 06 exige backend disponible y cuenta poblada; un fallback HTTP 200 no aprueba la prueba funcional.
 
-Para la EC2 actual, importar tambien `postman/Banco_XYZ_EC2_Semana_9.postman_environment.json` y seleccionar ese entorno. Contiene todas las variables de entrada: URLs de 34.229.100.153, accountId=119, targetAccountId=121, cliente 119/Alice Brown, montos, PIN y credenciales publicas de laboratorio. No incluye JWT, variables de salida ni certificados privados; actualizar las URLs si cambia la IP. Los IDs 101/102 del ejemplo anterior no se importan con los CSV EFT actuales; 119/121 tienen registros iniciales validos de ahorro.
+Probar por bloques, en este orden. En Runner usar una iteracion y un intervalo de 1000 ms; repetir solo consultas asincronas hasta el estado terminal, no solicitudes de escritura:
 
-Reimportar la coleccion junto con el entorno, reemplazar las versiones anteriores y ejecutar nuevamente el token 02. El test 06 ahora exige backend disponible y cuenta poblada; una respuesta fallback HTTP 200 no aprueba la prueba funcional.
-
-Ejecutar la coleccion con un intervalo de 1000 ms y repetir las consultas asincronas hasta el estado terminal:
-
-1. Health, token, 401, 403 y dashboard Web.
-2. ATM pendiente y confirmado; falla de riesgo y rechazo compensado.
-3. Desactivar siempre la falla de riesgo (request 12), incluso si alguna prueba falla.
-4. Cuentas: consulta, saldo y movimientos.
-5. Deposito, transferencia y listado por Gateway.
-6. Crear/consultar cliente y listado por Gateway.
-
-La coleccion contiene 54 requests. Ademas de las 23 originales, incluye:
-
-- `24`: BFF Mobile.
-- Carpeta `25`: apertura, mantenimiento, consulta y cierre de cuenta con saldo cero; rechazo de escritura por scope.
-- Carpeta `26`: deposito idempotente, conflicto por reutilizar clave con otro cuerpo, transferencia, fondos insuficientes, pago y saldos antes/despues. Usa dos cuentas nuevas por ejecucion, sin modificar las cuentas base; conserva datos de laboratorio.
-- Carpeta `27`: health, conteos, transacciones y rechazos batch por API. Opcional, activar `enableBatchChecks=true`.
-- Carpeta `28`: distribucion por `X-Service-Instance` para los tres microservicios. Opcional, activar `enableScalingChecks=true` y ejecutar solo esta carpeta despues del token 02 y del escalado Docker. `expectedInstances=2`, seis muestras por servicio.
-
-Ejecutar cada carpeta en orden; no enviar solicitudes de escritura dependientes de forma aislada. Antes de repetir una carpeta de escalabilidad interrumpida, borrar sus variables `ms-account.sampleCount`, `ms-payment.sampleCount`, `ms-customer.sampleCount` en la coleccion. Los cambios a estas variables se describen en [Postman scripts](https://learning.postman.com/v11/docs/tests-and-scripts/write-scripts/postman-sandbox-reference/pm-execution).
-
-Para batch desde Postman en el equipo local, mantener este tunel abierto:
-
-```bash
-ssh -i llave.pem -N -L 127.0.0.1:18080:localhost:8080 ec2-user@34.229.100.153
-```
-
-El entorno EC2 usa `batchBaseUrl=http://localhost:18080`. La carpeta obtiene un token core.read con el cliente bff-web de laboratorio. No abrir 8080 en el Security Group. Los conteos HTTP no prueban por si solos los estados de los jobs, sus checkpoints, la correccion completa de los resultados ni la generacion del CSV.
-
-Las verificaciones cubiertas por las nuevas requests y las que aun requieren revision manual son:
-
-| Caso | Verificacion |
+| Bloque | Prueba y resultado importante |
 | --- | --- |
-| Cuentas | POST /gateway/cuentas, PUT /gateway/cuentas/{id}, GET /gateway/cuentas/{id}/gestion y POST /gateway/cuentas/{id}/cierre; usar IDs nuevos, cierre con saldo cero y account.write |
-| Mobile | GET /gateway/mobile/cuentas/119/inicio; respuesta adaptada al canal |
-| Pagos | El deposito aumenta saldo, la transferencia debita origen y acredita destino |
-| Idempotencia | Repetir un POST con el mismo Idempotency-Key y el mismo cuerpo: misma operacion y saldo modificado una sola vez |
-| Fondos insuficientes | Rechazo sin saldo negativo ni abono parcial en destino |
-| ATM | Confirmacion debita una vez; rechazo termina compensado y libera la reserva |
-| Persistencia | Reiniciar el servicio despues de completar una operacion y comprobar que su estado permanece |
-| Seguridad | Lecturas y escrituras requieren sus scopes; el cliente demo no ejecuta operaciones internas |
+| Seguridad y BFF | 01 salud; 02 token general; 04 token limitado; 03 devuelve 401 y 05 devuelve 403. 06 Web y 24 Mobile deben tener backend disponible, sin fallback |
+| ATM | Registrar saldo inicial, desactivar falla con 12, crear un retiro con 07 y consultar 08 hasta CONFIRMED; comprobar debito unico. Activar falla de riesgo, crear otro retiro y consultar hasta RISK_REJECTED; esperar compensacion y saldo restaurado. Desactivar siempre la falla con 12 |
+| Clientes | Crear, consultar y listar el cliente por Gateway; 23 devuelve el listado |
+| Gestion de cuentas | Ejecutar carpeta 25 completa; cuenta nueva, mantenimiento, cierre con saldo cero y rechazo por scope |
+| Pagos | Ejecutar carpeta 26 completa; deposito, idempotencia, conflicto, transferencia, fondos insuficientes y pago |
+| Batch | Activar enableBatchChecks, abrir tunel SSH y ejecutar carpeta 27; completar revision SQL y CSV de la seccion 6 |
+| Escalabilidad | Escalar antes con Compose, obtener token 02 y ejecutar solo carpeta 28; comprobar dos instancias distintas por servicio |
 
-Para nuevas cuentas el cuerpo contiene `accountId`, `customerName`, `accountType`, `age`, `initialBalance`. Para transferencias: `sourceAccountId`, `targetAccountId`, `amount`, `description`. La repeticion sin Idempotency-Key puede crear una operacion distinta. Repetir Collection Runner modifica saldos; registrar los saldos iniciales antes de comparar.
+> Ejecutar cada carpeta en orden. Repetir escrituras modifica saldos; para estados asincronos repetir solo GET. Desactivar siempre la falla de riesgo con 12, incluso si una prueba falla.
+
+### Gestion de cuentas: carpeta 25
+
+![Runner de gestion de cuentas: apertura, mantenimiento, cierre y scopes aprobados](../evidencias/pruebas/18-gestion-cuentas-runner.png)
+
+*Cuenta creada, actualizada y cerrada con saldo cero; escritura sin scope rechazada.*
+
+### Pagos e idempotencia: carpeta 26
+
+![Runner de pagos: deposito, idempotencia, transferencias y pago aprobados](../evidencias/pruebas/27-pagos-runner.png)
+
+La carpeta crea dos cuentas propias; no modifica las cuentas base.
+
+| Operacion | Saldo origen / destino |
+| --- | --- |
+| Apertura | 100 / 0 |
+| Deposito de 25 y repeticion con la misma clave | 125 / 0; un solo abono |
+| Misma clave, cuerpo distinto | 409; mantiene 125 / 0 |
+| Transferencia de 20 | 105 / 20 |
+| Transferencia de 500 sin fondos | 409; mantiene 105 / 20 |
+| Pago de 5 | 100 / 20 |
+
+### Escalabilidad: carpeta 28
+
+![Runner de escalabilidad: replicas observadas de los tres microservicios y tests aprobados](../evidencias/pruebas/34-runner-escalabilidad.png)
+
+| Variable / control | Valor para repetir la demostracion |
+| --- | --- |
+| enableScalingChecks | true; escalar Docker antes y obtener token 02 |
+| expectedInstances | 2 |
+| scalingSamples | 12 en la corrida validada; 6 por defecto |
+| Runner | Una iteracion; intervalo 1000 ms; solo carpeta 28 |
+| Resultado | Dos IDs distintos en cada variable ms-account.observedInstances, ms-payment.observedInstances y ms-customer.observedInstances de la coleccion |
+
+Send no ejecuta el muestreo completo. scalingSamples indica lecturas, no replicas ni carga. Si se interrumpe Runner, borrar las tres variables ms-account.sampleCount, ms-payment.sampleCount y ms-customer.sampleCount antes de repetir. Desactivar enableScalingChecks al terminar.
+
+Para Batch usar el [tunel SSH de la seccion 8](#8-alcance-de-rendimiento-y-evidencias): batchBaseUrl=http://localhost:18080 y enableBatchChecks=true. La carpeta 27 obtiene su token core.read con el cliente bff-web; no abrir 8080 en el Security Group. Desactivar enableBatchChecks al terminar. Completar SQL y CSV: los conteos HTTP no prueban todos los resultados.
+
+<details>
+<summary>Cuerpos de operaciones y comprobacion manual de persistencia</summary>
+
+Para cuentas: accountId, customerName, accountType, age, initialBalance. Para transferencias: sourceAccountId, targetAccountId, amount, description. La repeticion sin Idempotency-Key puede crear otra operacion. Para comprobar persistencia, completar una operacion, reiniciar solo el servicio correspondiente y verificar que conserva su estado.
+
+</details>
 
 ## 6. Batch y resultados
 
@@ -140,11 +175,22 @@ docker compose cp batch-service:/app/output/annual_statement_report.csv ./annual
 
 Comprobar tres jobs COMPLETED, workers por particion, registros aceptados/rechazados y reporte anual generado. Los 1000 registros por CSV no implican 1000 resultados validos: aplicar reglas de rechazo y duplicados.
 
+![Consulta SQL: los tres jobs batch terminaron en COMPLETED](../evidencias/pruebas/31-batch-jobs-completados.png)
+
+*El estado de los jobs complementa los conteos de Postman. [Ver reporte CSV generado](../evidencias/pruebas/32-batch-csv-generado.png).*
+
 Comparar con valores esperados calculados independientemente a partir del CSV y las reglas del codigo: tipos y limite de anomalia para transacciones, tasas/edad para intereses, formato/tipos/duplicados para estados anuales. Comparar importes con precision decimal, totales y rechazos. No existe un COBOL ejecutable para comparar; una corrida Java sin fallos solo es referencia para verificar recuperacion, no prueba de correccion frente al legacy.
 
 ## 7. Pruebas automatizadas de fallos
 
-La ultima validacion local paso 56 tests unitarios y 4 de integracion. Para repetir las cuatro pruebas de integracion, usar exclusivamente este PostgreSQL temporal, sin volumen del stack:
+La ultima validacion local paso 56 tests unitarios y 4 de integracion. Las pruebas verifican checkpoints y equivalencia de tablas, rechazos y CSV tras fallos de proceso o PostgreSQL.
+
+> Nunca detener la base principal para estas pruebas: requieren un PostgreSQL temporal aislado.
+
+<details>
+<summary>Repetir las cuatro pruebas de integracion de recuperacion</summary>
+
+Usar exclusivamente este PostgreSQL temporal, sin volumen del stack:
 
 ```bash
 docker run -d --name banco-eft-recovery-postgres \
@@ -162,11 +208,52 @@ Esperar que pg_isready confirme disponibilidad antes de ejecutar Maven. Los test
 
 Los reportes quedan en `batch-service/target/failsafe-reports/` y los logs en `batch-service/target/recovery-validation/`. Sin las variables explicitas estos tests se omiten; BUILD SUCCESS por si solo no demuestra que se ejecutaron. No detener el PostgreSQL del stack para repetir estas pruebas.
 
+</details>
+
 ## 8. Alcance de rendimiento y evidencias
 
 No se haran pruebas de carga o gran volumen. Las estimaciones deben declarar cantidad de registros, hardware supuesto, paralelismo y limites de CPU, memoria, base de datos e I/O. No afirmar tiempos medidos en EC2 ni aceleracion frente a COBOL sin evidencia.
 
-Conservar evidencia local y, por separado, evidencia AWS: version/commit, Docker Compose ps, salud, resultados Postman, saldo antes/despues, jobs/particiones/rechazos, CSV anual, dos IDs de instancia por microservicio durante el escalado temporal y consumo observado. No incluir JWT, claves privadas ni secretos en capturas.
+Conservar version/commit y fecha junto a las capturas. No incluir JWT, claves privadas ni secretos.
+
+Organizacion de las capturas de Semana 9:
+
+| Ubicacion | Contenido |
+| --- | --- |
+| [Arquitectura draw.io](../evidencias/00-arquitectura.drawio) e [imagen](../evidencias/00-arquitectura.png) | Diagrama general del proyecto |
+| [despliegue](../evidencias/despliegue/) | Configuracion EC2, servicios Docker Compose, Security Group y ZIP en S3 |
+| [pruebas](../evidencias/pruebas/) | Salud, seguridad, BFFs, ATM, clientes, cuentas, pagos, batch y escalabilidad |
+| [Kafka](../evidencias/pruebas/36-logs-kafka.png) | Eventos y consumidores de un retiro |
+| [Resilience4j](../evidencias/pruebas/37-resilience4j.png) | Circuito registrado y estado CLOSED; no prueba apertura ni recuperacion |
+| [Eureka](../evidencias/pruebas/38-eureka-ui.png) | Registro de servicios y dos replicas UP por microservicio |
+
+Para Batch, Eureka UI y Resilience4j, mantener este tunel desde el equipo local, sin abrir puertos administrativos en el Security Group:
+
+```bash
+ssh -i llave.pem -N \
+  -L 127.0.0.1:18080:localhost:8080 \
+  -L 127.0.0.1:18761:localhost:8761 \
+  -L 127.0.0.1:19090:localhost:8090 \
+  ec2-user@34.229.100.153
+```
+
+Abrir Eureka en http://localhost:18761. En la misma coleccion Postman, consultar GET http://localhost:19090/actuator/circuitbreakers con Bearer {{accessToken}} obtenido por 02. CLOSED evidencia la configuracion, no una prueba del ciclo OPEN/HALF_OPEN/CLOSED.
+
+<details>
+<summary>Obtener una nueva captura de eventos Kafka</summary>
+
+Para logs Kafka, ejecutar dentro de EC2:
+
+```bash
+docker compose logs --since=10m risk-service notification-service \
+  | grep -E 'FundsReserved|RiskApproved|RETIRO CONFIRMADO'
+```
+
+Si Kafka fue recreado, los eventos anteriores pueden no existir. Para generar evidencia nueva, obtener token vigente, desactivar falla de riesgo, comprobar fondos y enviar 07 una sola vez; consultar 08 hasta CONFIRMED antes de revisar logs. Esto crea otro retiro y modifica el saldo. No repetir 07 como consulta de estado.
+
+</details>
+
+Las capturas y Markdown deben revisarse antes de sus commits. La entrega final aun requiere el informe tecnico en la plantilla y el video; las pruebas aprobadas no sustituyen esos entregables.
 
 ## 9. Detener sin perder datos
 

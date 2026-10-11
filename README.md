@@ -2,27 +2,25 @@
 
 Proyecto de Desarrollo Backend III con Spring Boot 3, Java 21, Spring Cloud, OAuth2/JWT, Resilience4j, Kafka y Docker Compose.
 
-## Arquitectura y responsabilidades
+Repositorio: [Desarrollo_Backend_III_Banco_XYZ](https://github.com/Arekkusu17/Desarrollo_Backend_III_Banco_XYZ).
 
-- `ms-account`: apertura, mantenimiento, cierre, saldo, movimientos y reserva/compensacion de fondos.
-- `ms-payment`: depositos, pagos y transferencias contra el saldo operativo; idempotencia, reintentos y outbox Kafka.
-- `ms-customer`: gestion persistente de perfiles de clientes.
-- `batch-service`: tres jobs Spring Batch para transacciones diarias, intereses mensuales y estados anuales. No es el core transaccional.
-- `bff-web`, `bff-mobile`, `bff-atm`: respuestas por canal; el ATM mantiene una saga persistente de retiro.
-- `api-gateway`, `auth-server`, `config-server`, `discovery-server`: entrada, seguridad OAuth2, configuracion y descubrimiento Eureka.
-- `risk-service`, `notification-service`, `shared-events`: riesgo, notificaciones y contratos/inbox/outbox de eventos.
-- PostgreSQL conserva datos operativos y metadatos batch; Kafka transporta eventos asincronos.
+## Arquitectura
 
-```text
-Postman -> API Gateway -> BFF Web / Mobile / ATM -> ms-account
-                       -> ms-account / ms-payment / ms-customer
-ms-payment -> ms-account (operaciones internas con account.execute)
-ATM -> Kafka -> ms-account -> risk-service -> confirmacion o compensacion
-batch-service -> PostgreSQL + reporte anual CSV
-OAuth2/JWT + Eureka + Config Server
-```
+![Arquitectura Banco XYZ: canales, microservicios, batch y eventos en EC2](evidencias/00-arquitectura.png)
 
-El uso de una base PostgreSQL compartida simplifica esta demostracion academica. No equivale a un despliegue productivo con bases aisladas, alta disponibilidad o escalabilidad entre multiples hosts.
+[Abrir diagrama editable en draw.io](evidencias/00-arquitectura.drawio).
+
+| Componente | Responsabilidad |
+| --- | --- |
+| ms-account | Apertura, mantenimiento, cierre, saldos, movimientos y reserva/compensacion |
+| ms-payment | Depositos, pagos y transferencias; idempotencia, reintentos y outbox Kafka |
+| ms-customer | Perfiles persistentes de clientes |
+| batch-service | Transacciones diarias, intereses mensuales y estados anuales CSV |
+| BFF Web / Mobile / ATM | Respuestas por canal y saga persistente de retiro ATM |
+| Gateway / Auth / Config / Eureka | Enrutamiento, OAuth2/JWT, configuracion y descubrimiento |
+| Kafka / Risk / Notification | Eventos, evaluacion de riesgo y notificaciones |
+
+PostgreSQL compartido conserva datos operativos y metadatos batch. Es una simplificacion de laboratorio, no una arquitectura productiva con bases aisladas.
 
 ## Requisitos y ejecucion
 
@@ -41,13 +39,29 @@ El comando Compose anterior usa HTTP y solo se recomienda para desarrollo local.
 - [Instrucciones y pruebas](entregables/instrucciones.md): OAuth2, Postman, operaciones, batch y recuperacion.
 - [Despliegue S3 y EC2](entregables/despliegue.md): requisitos, instalacion, HTTPS y demostracion temporal de escalabilidad.
 
-Este README es el unico README general de entrega. El informe tecnico y el video estan pendientes; no se incluyen en esta etapa. Los documentos de semanas anteriores y las imagenes existentes son antecedentes, no evidencia de una ejecucion EFT en AWS.
+Este README es el unico README general de entrega. El informe tecnico y el video estan pendientes; no se incluyen en esta etapa.
 
-## Puertos de laboratorio
+Las capturas de Semana 9 estan organizadas en [despliegue](evidencias/despliegue/) (EC2, contenedores, Security Group y S3) y [pruebas](evidencias/pruebas/) (Postman, batch, escalabilidad, Kafka, Resilience4j y Eureka). Los documentos de semanas anteriores son antecedentes, no resultados de esta EFT.
+
+## Validacion
+
+| Verificacion | Resultado registrado |
+| --- | --- |
+| Tests locales | 56 unitarios y 4 de integracion de recuperacion batch |
+| EC2, 11 de octubre de 2026 | HTTPS, scopes, BFFs, ATM, clientes, cuentas, pagos y batch validados |
+| Escalabilidad | Dos instancias observadas por microservicio; carpeta 28 con todos los tests Passed |
+
+![Resultado Postman: distribucion entre replicas de los tres microservicios](evidencias/pruebas/34-runner-escalabilidad.png)
+
+La corrida utilizo 12 muestras por servicio. Comprueba distribucion de lecturas, no rendimiento bajo carga ni alta disponibilidad entre hosts. Las pruebas de integracion locales requieren una base aislada; sin sus variables Maven las omite.
+
+## Puertos
+
+EC2 validada: Gateway `https://34.229.100.153:8084` y Auth `https://34.229.100.153:9001`.
 
 | Servicio | Puerto del host |
 | --- | --- |
-| Auth Server | 9000 (configurable con AUTH_SERVER_PORT) |
+| Auth Server | 9000 por defecto; 9001 en la EC2 validada |
 | Gateway | 8084 |
 | BFF Web / Mobile / ATM | 8081 / 8082 / 8083 |
 | ms-account / ms-payment / ms-customer | 8091 / 8092 / 8093 |
@@ -57,18 +71,9 @@ Este README es el unico README general de entrega. El informe tecnico y el video
 
 Los tres microservicios dejan de publicar puertos directos al aplicar `docker-compose.scale.yml`. En ese modo se prueban a traves del Gateway. No abrir PostgreSQL, Kafka ni las consolas administrativas a Internet.
 
-## Validacion y limites
 
-La ultima corrida local completo 56 tests unitarios y 4 pruebas de integracion: terminacion abrupta de cada job y caida temporal de PostgreSQL. La recuperacion conserva checkpoints por particion, impide tomar un job con propietario activo y produce resultados equivalentes a una ejecucion sin fallos.
+## Alcance
 
-Las pruebas de integracion requieren una base aislada y variables explicitas; sin ellas Maven las omite. Ver [instrucciones](entregables/instrucciones.md).
+Los tres CSV EFT tienen 1000 registros cada uno y proceden de [fin_legacy_data](https://github.com/KariVillagran/fin_legacy_data). No hay COBOL ejecutable ni pruebas de carga: no se afirma equivalencia medida contra el legacy o mejora de rendimiento. Las proyecciones se presentan como estimaciones.
 
-Se utilizan los tres CSV de `batch-service/src/main/resources/input/eft/`, con 1000 registros cada uno, procedentes de [fin_legacy_data](https://github.com/KariVillagran/fin_legacy_data). No se dispone de un programa COBOL ejecutable: no se afirma equivalencia comprobada contra COBOL ni una mejora de rendimiento medida frente al legacy.
-
-No se realizaran pruebas de carga o gran volumen. Las proyecciones de rendimiento se presentaran como estimaciones, indicando supuestos; no como resultados experimentales.
-
-El despliegue y la escalabilidad en EC2 estan pendientes de validacion. El criterio 6 pide Docker y escalabilidad horizontal para los tres microservicios en la nube, sin fijar replicas permanentes. Se mantendra una instancia por servicio y se aumentaran temporalmente las replicas para obtener evidencia.
-
-## Flujo Git
-
-La version candidata esta en `feature/eft-compliance`. Las subetapas se integran mediante branches feature. El PR a `develop` queda para revision y pruebas en EC2, sin merge automatico.
+El escalado a dos replicas es temporal; la pauta no exige mantenerlas permanentemente. Resilience4j se evidencia en estado CLOSED, sin demostrar el ciclo de apertura y recuperacion.
