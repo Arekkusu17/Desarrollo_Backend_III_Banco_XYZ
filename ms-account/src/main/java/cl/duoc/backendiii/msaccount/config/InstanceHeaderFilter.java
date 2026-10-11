@@ -14,7 +14,7 @@ public class InstanceHeaderFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
                                     FilterChain chain) throws ServletException, IOException {
         response.setHeader("X-Service-Instance", "ms-account:" +
-                System.getenv().getOrDefault("HOSTNAME", "localhost"));
+                System.getProperty("bank.instance", System.getenv().getOrDefault("HOSTNAME", "localhost")));
         chain.doFilter(request, response);
     }
 }

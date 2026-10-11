@@ -44,4 +44,17 @@ class AccountSecurityTest {
                         .contentType("application/json").content("{}"))
                 .andExpect(status().isNoContent());
     }
+
+    @Test
+    void internalErrorDispatchDoesNotRequireAnAdditionalReadScope() throws Exception {
+        mvc.perform(get("/error").with(jwt().authorities(new SimpleGrantedAuthority("SCOPE_account.execute"))))
+                .andExpect(status().isForbidden());
+        mvc.perform(get("/error").with(jwt().authorities(new SimpleGrantedAuthority("SCOPE_account.execute")))
+                        .with(request -> {
+                            request.setDispatcherType(jakarta.servlet.DispatcherType.ERROR);
+                            return request;
+                        }))
+                .andExpect(result -> org.assertj.core.api.Assertions.assertThat(
+                        result.getResponse().getStatus()).isNotEqualTo(403));
+    }
 }

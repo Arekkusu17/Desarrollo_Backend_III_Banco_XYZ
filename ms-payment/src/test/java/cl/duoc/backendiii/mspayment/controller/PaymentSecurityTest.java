@@ -35,4 +35,16 @@ class PaymentSecurityTest {
                         .contentType("application/json").content("{}"))
                 .andExpect(status().isCreated());
     }
+
+    @Test
+    void nestedDiscoveryFailurePreservesServiceUnavailableStatus() throws Exception {
+        org.mockito.Mockito.when(service.deposit(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenThrow(new org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE, "Reintentar con la misma clave",
+                        new IllegalArgumentException("Service Instance cannot be null")));
+        mvc.perform(post("/api/payments/deposits")
+                        .with(jwt().authorities(new SimpleGrantedAuthority("SCOPE_payment.write")))
+                        .contentType("application/json").content("{}"))
+                .andExpect(status().isServiceUnavailable());
+    }
 }
