@@ -101,6 +101,30 @@ services:
       auth-server:
         condition: service_started
 
+  ms-account:
+    build:
+      context: .
+      dockerfile: ms-account/Dockerfile
+    container_name: banco-xyz-ms-account
+    environment:
+      CONFIG_SERVER_URL: http://config-server:8888
+      EUREKA_URL: http://discovery-server:8761/eureka/
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/banco_xyz
+      SPRING_DATASOURCE_USERNAME: banco
+      SPRING_DATASOURCE_PASSWORD: banco
+      OAUTH_ISSUER_URI: http://auth-server:9000
+    ports:
+      - "8091:8091"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      config-server:
+        condition: service_started
+      discovery-server:
+        condition: service_started
+      auth-server:
+        condition: service_started
+
   bff-web:
     build:
       context: .
@@ -119,6 +143,7 @@ services:
       - "8081:8081"
     depends_on:
       - core-banking
+      - ms-account
       - discovery-server
       - auth-server
 
@@ -140,6 +165,7 @@ services:
       - "8082:8082"
     depends_on:
       - core-banking
+      - ms-account
       - discovery-server
       - auth-server
 
@@ -163,6 +189,7 @@ services:
     depends_on:
       - kafka
       - core-banking
+      - ms-account
       - discovery-server
       - auth-server
 

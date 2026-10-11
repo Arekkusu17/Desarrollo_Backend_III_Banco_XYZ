@@ -6,6 +6,7 @@ COPY discovery-server/pom.xml discovery-server/pom.xml
 COPY auth-server/pom.xml auth-server/pom.xml
 COPY api-gateway/pom.xml api-gateway/pom.xml
 COPY shared-events/pom.xml shared-events/pom.xml
+COPY ms-account/pom.xml ms-account/pom.xml
 COPY core-banking/pom.xml core-banking/pom.xml
 COPY bff-common/pom.xml bff-common/pom.xml
 COPY bff-web/pom.xml bff-web/pom.xml
