@@ -22,9 +22,19 @@ if [[ -n "${TLS_PUBLIC_IP:-}" ]]; then
   SAN="$SAN,ip:$TLS_PUBLIC_IP"
 fi
 EXTRA_IPS=()
+[[ "${TLS_SCALE_NETWORK:-false}" == true || "${TLS_SCALE_NETWORK:-false}" == false ]] || { echo "TLS_SCALE_NETWORK debe ser true o false"; exit 1; }
+if [[ "${TLS_SCALE_NETWORK:-false}" == true ]]; then
+  # Cover the entire allocation pool in docker-compose.scale.yml, not a snapshot of running IPs.
+  for ((host=0; host<64; host++)); do
+    EXTRA_IPS+=("172.30.90.$host")
+  done
+fi
 if [[ -n "${TLS_EXTRA_IPS:-}" ]]; then
   [[ "$TLS_EXTRA_IPS" != ,* && "$TLS_EXTRA_IPS" != *, && "$TLS_EXTRA_IPS" != *,,* ]] || { echo "TLS_EXTRA_IPS invalida"; exit 1; }
-  IFS=, read -r -a EXTRA_IPS <<< "$TLS_EXTRA_IPS"
+  IFS=, read -r -a REQUESTED_IPS <<< "$TLS_EXTRA_IPS"
+  EXTRA_IPS+=("${REQUESTED_IPS[@]}")
+fi
+if [[ ${#EXTRA_IPS[@]} -gt 0 ]]; then
   for ip in "${EXTRA_IPS[@]}"; do
     validate_ipv4 "$ip" || { echo "IP invalida en TLS_EXTRA_IPS: $ip"; exit 1; }
     SAN="$SAN,ip:$ip"

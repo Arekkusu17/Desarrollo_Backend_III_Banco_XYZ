@@ -188,48 +188,43 @@ Confirmar los tres jobs COMPLETED, sus particiones, rechazos y reporte anual con
 
 El criterio 6 de la pauta solicita Docker y escalabilidad horizontal de tres microservicios en la nube. No fija dos replicas permanentes. Esta demostracion usa dos temporalmente en una EC2; no demuestra alta disponibilidad entre hosts.
 
-Aplicar el override, que elimina container_name y los puertos fijos de ms-account, ms-payment y ms-customer. Tambien anuncia la IP individual de cada replica en Eureka: un hostname compartido puede dirigir las conexiones HTTPS al mismo contenedor aunque Eureka tenga dos registros.
+Aplicar el override, que elimina container_name y los puertos fijos de ms-account, ms-payment y ms-customer. Tambien anuncia la IP individual de cada replica en Eureka: un hostname compartido puede dirigir las conexiones HTTPS al mismo contenedor aunque Eureka tenga dos registros. La red usa subnet 172.30.90.0/24 con asignacion limitada a 172.30.90.0/26 y gateway 172.30.90.254; el certificado cubre todo el pool, no una fotografia de las IP actuales.
+
+Antes de cambiar la red, revisar que 172.30.90.0/24 no se superponga con otra red Docker ni con rutas de la VPC/VPN. Si hay conflicto, no ejecutar la migracion: modificar el pool y su cobertura TLS juntos. Revisar las redes y rutas con:
+
+```bash
+docker network inspect $(docker network ls -q) \
+  --format '{{.Name}} {{json .IPAM.Config}}'
+ip route
+```
+
+Conservar TLS_PUBLIC_IP (la IP publica de EC2), TLS_PUBLIC_DNS si se utilizo, TLS_STORE_PASSWORD y AUTH_SERVER_PORT con los mismos valores del despliegue. El cambio de IPAM requiere recrear la red. Hay una interrupcion temporal del stack; el comando down SIN -v conserva el volumen de PostgreSQL. No cambiar el directorio ni el nombre del proyecto Compose, que identifican ese volumen. No usar --volumes, prune ni borrar output/tls.
 
 ```bash
 export COMPOSE_FILE=docker-compose.yml:docker-compose.secure.yml:docker-compose.scale.yml
 docker compose config --quiet
+docker compose down --remove-orphans
+unset TLS_EXTRA_IPS
+TLS_SCALE_NETWORK=true TLS_REGENERATE=true TLS_COPY_BFF=false \
+  bash scripts/generar-certificados.sh
+```
+
+Solo si la generacion termina correctamente, iniciar el stack en la red nueva. No reconstruir imagenes Java para este cambio:
+
+```bash
 docker compose up -d --remove-orphans \
   --scale ms-account=2 --scale ms-payment=2 --scale ms-customer=2
 docker compose ps
 docker stats --no-stream
+docker inspect $(docker compose ps -q ms-account ms-payment ms-customer) \
+  --format '{{.Name}} {{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}'
 ```
 
-Antes de probar el balanceo, incluir las IP actuales en el certificado. Conservar TLS_PUBLIC_IP (la IP publica de EC2), TLS_PUBLIC_DNS si se utilizo y TLS_STORE_PASSWORD con los mismos valores del despliegue. No publicar la clave ni los almacenes de certificados.
-
-```bash
-export TLS_EXTRA_IPS="$(docker inspect \
-  $(docker compose ps -q ms-account ms-payment ms-customer) \
-  --format '{{range .NetworkSettings.Networks}}{{println .IPAddress}}{{end}}' \
-  | sort -u | sed '/^$/d' | paste -sd, -)"
-test -n "$TLS_EXTRA_IPS"
-printf 'IP de las replicas: %s\n' "$TLS_EXTRA_IPS"
-```
-
-Si la inspeccion falla o no devuelve las seis IP, detener el procedimiento. Revisar que existan dos replicas de cada servicio. No continuar con una lista vacia ni usar las IP de un despliegue anterior.
-
-Durante esta actualizacion hay una interrupcion breve. Detener los servicios TLS sin eliminar sus contenedores conserva las IP inspeccionadas. El script existente genera los nuevos archivos antes de reemplazar los anteriores y conserva un respaldo en output/tls/backup.*. No renombrar el directorio output/tls porque esta montado en los contenedores.
-
-```bash
-docker compose stop api-gateway bff-web bff-mobile bff-atm \
-  ms-payment ms-account ms-customer risk-service batch-service auth-server
-TLS_REGENERATE=true TLS_COPY_BFF=false bash scripts/generar-certificados.sh
-```
-
-Solo si el script termina correctamente, arrancar los mismos contenedores para recargar identidad y confianza TLS:
-
-```bash
-docker compose start auth-server ms-account ms-payment ms-customer \
-  risk-service batch-service bff-web bff-mobile bff-atm api-gateway
-```
+Verificar seis contenedores con IP distintas dentro del pool 172.30.90.0-63 y dos registros UP por microservicio en Eureka. No avanzar si hay IP fuera del pool. Esperar arranque y propagacion; una importacion inicial opcional del Config Server puede requerir reiniciar el Gateway una vez que Config Server este disponible.
 
 Reimportar output/tls/bank.crt como certificado de confianza en Postman y reemplazar el certificado anterior. Mantener SSL certificate verification activado. No es necesario reconstruir las imagenes Java para este cambio.
 
-Las IP internas pueden cambiar al recrear contenedores o cambiar la cantidad de replicas. En ese caso repetir inspeccion, regeneracion y recarga antes de verificar el balanceo. Esta estrategia corresponde a la demostracion temporal; para operacion continua se requieren identidades y emision de certificados automatizadas. TLS_EXTRA_IPS acepta IPv4 separadas por comas; sin TLS_REGENERATE=true el script conserva los archivos existentes y rechaza IP adicionales no cubiertas por su certificado.
+Las IP internas pueden cambiar al recrear contenedores, pero siguen cubiertas mientras pertenezcan al pool configurado. TLS_SCALE_NETWORK=true agrega sus 64 direcciones al SAN. No hace falta regenerar por cada reinicio ni al reducir a una replica. El script conserva un respaldo en output/tls/backup.* y, sin TLS_REGENERATE=true, rechaza direcciones solicitadas no cubiertas. TLS_EXTRA_IPS sigue disponible para IPv4 adicionales separadas por comas. Este certificado compartido y el pool acotado son para laboratorio, no una gestion de identidades de produccion. No publicar claves ni certificados privados.
 
 Realizar la regresion breve de Postman: 01 UP; 02 y 04 tokens nuevos; 03 y 05 rechazos 401/403; 06 y 24 datos reales sin fallback; 19 y 23 listados por Gateway. Luego ejecutar la carpeta 28 completa. No repetir operaciones de escritura ni todos los bloques funcionales por este cambio de infraestructura.
 
@@ -250,16 +245,17 @@ Resultado esperado: al menos dos valores distintos de X-Service-Instance para ca
 
 La carpeta Postman `28 - Escalabilidad por Gateway (opcional)` realiza esta comprobacion con seis muestras por servicio. Obtener primero el token 02, activar `enableScalingChecks=true`, dejar `expectedInstances=2` y ejecutar solo la carpeta 28 en Runner. Al volver a una replica, desactivar el flag o ajustar expectedInstances a 1. La carpeta no crea ni elimina replicas.
 
-Volver a una replica manteniendo el override (si cambia alguna IP, renovar nuevamente su cobertura TLS):
+Volver a una replica manteniendo el override y el pool cubierto por TLS:
 
 ```bash
 docker compose up -d --remove-orphans \
   --scale ms-account=1 --scale ms-payment=1 --scale ms-customer=1
 ```
 
-En ese modo siguen sin puertos directos. Para volver a la configuracion inicial con puertos directos:
+En ese modo siguen sin puertos directos. Para volver a la configuracion inicial con puertos directos y red automatica, retirar primero la red acotada, conservando los datos:
 
 ```bash
+docker compose down --remove-orphans
 export COMPOSE_FILE=docker-compose.yml:docker-compose.secure.yml
 docker compose up -d --remove-orphans
 ```
