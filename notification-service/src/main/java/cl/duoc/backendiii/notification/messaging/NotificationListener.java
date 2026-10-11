@@ -1,6 +1,7 @@
 package cl.duoc.backendiii.notification.messaging;
 
 import cl.duoc.backendiii.events.FundsReleasedEvent;
+import cl.duoc.backendiii.events.PaymentCompletedEvent;
 import cl.duoc.backendiii.events.TopicNames;
 import cl.duoc.backendiii.events.WithdrawalCancelledEvent;
 import cl.duoc.backendiii.events.WithdrawalConfirmedEvent;
@@ -32,6 +33,14 @@ public class NotificationListener {
         }
         log.info("[{}][NOTIFICACION] RETIRO CONFIRMADO transactionId={} accountId={} amount={} authorizationCode={}",
                 instanceId, event.transactionId(), event.accountId(), event.amount(), event.authorizationCode());
+    }
+
+    @KafkaListener(topics = TopicNames.PAYMENT_COMPLETED, groupId = "notification-service-group")
+    public void onPaymentCompleted(PaymentCompletedEvent event) {
+        if (!processedEvents.isFirstTime(event.eventId())) return;
+        log.info("[{}][NOTIFICACION] PAGO COMPLETADO operationId={} type={} source={} target={} amount={}",
+                instanceId, event.transactionId(), event.type(), event.sourceAccountId(),
+                event.targetAccountId(), event.amount());
     }
 
     @KafkaListener(topics = TopicNames.WITHDRAWAL_CANCELLED, groupId = "notification-service-group")

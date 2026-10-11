@@ -2,7 +2,7 @@
 
 Servicio para entregar un contrato completo para banca web.
 
-Consume `core-banking` y expone endpoints optimizados para dashboards, historiales y vistas completas del cliente.
+Consume `batch-service` y expone endpoints optimizados para dashboards, historiales y vistas completas del cliente.
 
 ## Endpoint
 

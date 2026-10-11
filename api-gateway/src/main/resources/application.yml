@@ -8,29 +8,6 @@ spring:
       resourceserver:
         jwt:
           issuer-uri: ${OAUTH_ISSUER_URI:http://localhost:9000}
-  cloud:
-    gateway:
-      server:
-        webflux:
-          routes:
-            - id: bff-web
-              uri: lb://bff-web
-              predicates:
-                - Path=/gateway/web/**
-              filters:
-                - RewritePath=/gateway/(?<segment>.*), /$\{segment}
-            - id: bff-mobile
-              uri: lb://bff-mobile
-              predicates:
-                - Path=/gateway/mobile/**
-              filters:
-                - RewritePath=/gateway/(?<segment>.*), /$\{segment}
-            - id: bff-atm
-              uri: lb://bff-atm
-              predicates:
-                - Path=/gateway/atm/**
-              filters:
-                - RewritePath=/gateway/(?<segment>.*), /$\{segment}
 
 server:
   port: 8084

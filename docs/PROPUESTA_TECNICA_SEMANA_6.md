@@ -17,7 +17,7 @@ API Gateway
        +--> BFF ATM
               |
               v
-        Core Banking
+        Batch Service
               |
               v
           PostgreSQL
@@ -30,10 +30,10 @@ Eureka permite descubrir servicios por nombre logico.
 
 | Componente | Responsabilidad |
 | --- | --- |
-| `config-server` | Centraliza configuracion de Core Banking, BFF y Gateway. |
+| `config-server` | Centraliza configuracion de Batch Service, BFF y Gateway. |
 | `discovery-server` | Registra y expone servicios disponibles mediante Eureka. |
 | `api-gateway` | Punto de entrada unico para los canales Web, Mobile y ATM. |
-| `core-banking` | Expone APIs bancarias construidas sobre la migracion de datos legacy. |
+| `batch-service` | Expone APIs bancarias construidas sobre la migracion de datos legacy. |
 | `bff-web` | Agrega datos para banca web y demuestra resiliencia con Circuit Breaker. |
 | `bff-mobile` | Entrega una respuesta liviana para app movil. |
 | `bff-atm` | Entrega operaciones acotadas para cajero automatico. |
@@ -44,7 +44,7 @@ El modulo `config-server` usa perfil `native` y lee configuraciones desde `confi
 
 Archivos principales:
 
-- `core-banking.yml`
+- `batch-service.yml`
 - `bff-web.yml`
 - `bff-mobile.yml`
 - `bff-atm.yml`
@@ -59,7 +59,7 @@ Eureka se ejecuta en el puerto `8761`. Los servicios se registran usando `spring
 Ejemplo:
 
 ```text
-http://core-banking
+http://batch-service
 ```
 
 en lugar de una IP o puerto fijo.
@@ -94,7 +94,7 @@ Casos esperados:
 
 ## Tolerancia a fallos
 
-`bff-web` aplica Circuit Breaker sobre la llamada al resumen de cuenta de `core-banking`.
+`bff-web` aplica Circuit Breaker sobre la llamada al resumen de cuenta de `batch-service`.
 
 Cuando el core esta disponible, el dashboard responde con datos completos. Cuando el core falla, el BFF responde una vista degradada con `backendStatus=CORE_BANKING_NO_DISPONIBLE_CIRCUIT_BREAKER`, listas vacias y secciones reducidas.
 
@@ -107,6 +107,6 @@ La degradacion se aplica a una lectura de dashboard. Operaciones criticas no deb
 - Docker Compose con servicios arriba.
 - Gateway respondiendo para Web, Mobile y ATM.
 - Seguridad `401`, `403` y `200`.
-- Respuesta degradada de `bff-web` con Core Banking detenido.
+- Respuesta degradada de `bff-web` con Batch Service detenido.
 - `./mvnw test` exitoso.
 

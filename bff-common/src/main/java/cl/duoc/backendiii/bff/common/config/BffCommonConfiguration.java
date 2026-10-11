@@ -66,12 +66,18 @@ public class BffCommonConfiguration {
                                             ChannelAuthProperties channelAuthProperties) throws Exception {
         http
                 .csrf(csrf -> csrf.disable())
-                .authorizeHttpRequests(auth -> auth
+                .authorizeHttpRequests(auth -> {
+                    if ("atm.read".equals(channelAuthProperties.scope())) {
+                        auth.requestMatchers(org.springframework.http.HttpMethod.POST,
+                                channelAuthProperties.pathPattern()).hasAuthority("SCOPE_atm.write");
+                    }
+                    auth
                         .requestMatchers("/actuator/health").permitAll()
                         .requestMatchers("/actuator/info").permitAll()
                         .requestMatchers(channelAuthProperties.pathPattern())
                         .hasAuthority("SCOPE_" + channelAuthProperties.scope())
-                        .anyRequest().authenticated())
+                        .anyRequest().authenticated();
+                })
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> {}))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .exceptionHandling(errors -> errors
@@ -124,7 +130,7 @@ public class BffCommonConfiguration {
                     .body(TokenResponse.class);
 
             if (token == null || token.accessToken() == null) {
-                throw new IllegalStateException("No fue posible obtener token OAuth2 para core-banking");
+                throw new IllegalStateException("No fue posible obtener token OAuth2 para el servicio de cuentas");
             }
             return token.accessToken();
         }

@@ -9,7 +9,7 @@ import cl.duoc.backendiii.risk.service.RiskEvaluationService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.kafka.annotation.KafkaListener;
-import org.springframework.kafka.core.KafkaTemplate;
+import cl.duoc.backendiii.events.store.JdbcEventStore;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
@@ -19,24 +19,21 @@ import java.util.UUID;
 public class RiskEventListener {
     private static final Logger log = LoggerFactory.getLogger(RiskEventListener.class);
 
-    private final ProcessedEventStore processedEvents;
+    private final JdbcEventStore events;
     private final RiskEvaluationService riskEvaluationService;
-    private final KafkaTemplate<String, Object> kafkaTemplate;
 
-    public RiskEventListener(ProcessedEventStore processedEvents,
-                             RiskEvaluationService riskEvaluationService,
-                             KafkaTemplate<String, Object> kafkaTemplate) {
-        this.processedEvents = processedEvents;
+    public RiskEventListener(JdbcEventStore events,
+                             RiskEvaluationService riskEvaluationService) {
+        this.events = events;
         this.riskEvaluationService = riskEvaluationService;
-        this.kafkaTemplate = kafkaTemplate;
     }
 
     @KafkaListener(topics = TopicNames.FUNDS_RESERVED, groupId = "risk-service-group")
     public void onFundsReserved(FundsReservedEvent event) {
-        if (!processedEvents.isFirstTime(event.eventId())) {
-            log.warn("[IDEMPOTENCIA] FundsReserved duplicado ignorado eventId={}", event.eventId());
-            return;
-        }
+        events.consume(event, () -> evaluate(event));
+    }
+
+    private void evaluate(FundsReservedEvent event) {
         log.info("[CONSUMER] FundsReserved recibido transactionId={} amount={}",
                 event.transactionId(), event.amount());
 
@@ -50,7 +47,7 @@ public class RiskEventListener {
                     event.amount(),
                     decision.authorizationCode()
             );
-            kafkaTemplate.send(TopicNames.RISK_APPROVED, event.transactionId().toString(), approved);
+            events.enqueue(TopicNames.RISK_APPROVED, approved);
             log.info("[PRODUCER] RiskApproved publicado transactionId={}", event.transactionId());
             return;
         }
@@ -63,7 +60,7 @@ public class RiskEventListener {
                 event.amount(),
                 decision.reason()
         );
-        kafkaTemplate.send(TopicNames.RISK_REJECTED, event.transactionId().toString(), rejected);
+        events.enqueue(TopicNames.RISK_REJECTED, rejected);
         log.info("[PRODUCER] RiskRejected publicado transactionId={} reason={}",
                 event.transactionId(), decision.reason());
     }

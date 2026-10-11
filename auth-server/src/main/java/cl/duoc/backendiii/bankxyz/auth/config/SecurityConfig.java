@@ -54,7 +54,8 @@ public class SecurityConfig {
             @Value("${oauth.clients.demo.secret}") String demoSecret,
             @Value("${oauth.clients.bff-web.secret}") String bffWebSecret,
             @Value("${oauth.clients.bff-mobile.secret}") String bffMobileSecret,
-            @Value("${oauth.clients.bff-atm.secret}") String bffAtmSecret) {
+            @Value("${oauth.clients.bff-atm.secret}") String bffAtmSecret,
+            @Value("${oauth.clients.payment.secret:payment-secret}") String paymentSecret) {
         TokenSettings tokenSettings = TokenSettings.builder()
                 .accessTokenTimeToLive(Duration.ofMinutes(30))
                 .build();
@@ -65,22 +66,34 @@ public class SecurityConfig {
                 .scope("atm.read")
                 .scope("atm.write")
                 .scope("risk.read")
+                .scope("account.read")
+                .scope("account.write")
+                .scope("payment.read")
+                .scope("payment.write")
+                .scope("customer.read")
+                .scope("customer.write")
                 .build();
 
         RegisteredClient bffWeb = client("bff-web", bffWebSecret, tokenSettings)
                 .scope("core.read")
+                .scope("account.read")
                 .build();
 
         RegisteredClient bffMobile = client("bff-mobile", bffMobileSecret, tokenSettings)
                 .scope("core.read")
+                .scope("account.read")
                 .build();
 
         RegisteredClient bffAtm = client("bff-atm", bffAtmSecret, tokenSettings)
                 .scope("core.read")
                 .scope("core.write")
+                .scope("account.read")
                 .build();
 
-        return new InMemoryRegisteredClientRepository(demoClient, bffWeb, bffMobile, bffAtm);
+        RegisteredClient payments = client("ms-payment", paymentSecret, tokenSettings)
+                .scope("account.execute")
+                .build();
+        return new InMemoryRegisteredClientRepository(demoClient, bffWeb, bffMobile, bffAtm, payments);
     }
 
     @Bean
