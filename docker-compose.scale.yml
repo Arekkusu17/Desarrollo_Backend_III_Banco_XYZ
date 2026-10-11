@@ -1,0 +1,16 @@
+services:
+  ms-account:
+    container_name: !reset null
+    ports: !override []
+    deploy:
+      replicas: 2
+  ms-payment:
+    container_name: !reset null
+    ports: !override []
+    deploy:
+      replicas: 2
+  ms-customer:
+    container_name: !reset null
+    ports: !override []
+    deploy:
+      replicas: 2
