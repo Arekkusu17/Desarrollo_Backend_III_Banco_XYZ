@@ -94,15 +94,33 @@ aws s3 ls s3://banco-xyz-semana-9-<identificador>/
 
 ## 5. Crear instancia EC2
 
-Configuracion sugerida:
+Requisitos recomendados para ejecutar la solucion completa:
 
 | Item | Valor recomendado |
 | --- | --- |
-| AMI | Amazon Linux 2023 o Ubuntu 22.04 |
-| Tipo | `t3.large` o superior |
-| Disco | 30 GB gp3 |
-| IAM Role | Permiso de lectura al bucket S3 |
-| Security Group | Puertos `22`, `8084`, `9000`, `8761` y `8888` segun necesidad |
+| AMI | Amazon Linux 2023 o Ubuntu 22.04 LTS |
+| Arquitectura | `x86_64`, compatible con el instalador de Compose de esta guia |
+| Tipo | `t3.large`: 2 vCPU y 8 GiB de RAM; aumentar capacidad si falta memoria |
+| Disco | EBS de 30 GiB gp3 como punto de partida para codigo, imagenes y datos |
+| Red | Subred publica con ruta a Internet Gateway, IPv4 publica y salida a Internet para descargar paquetes e imagenes |
+| Acceso SSH | Key pair cuya llave privada este disponible en el equipo local |
+| IAM Role | Rol asociado a EC2 con `s3:GetObject` sobre el ZIP del bucket |
+| Software | Docker Engine, Docker Compose v2, AWS CLI, unzip, git y curl |
+
+El dimensionamiento es una recomendacion inicial para la demostracion, no un minimo validado mediante pruebas de carga. Compose ejecuta varios procesos Spring Boot junto con Kafka y PostgreSQL; comprobar el consumo con `docker stats` y el espacio disponible con `df -h` durante la compilacion y el arranque.
+
+Las especificaciones de `t3.large` se pueden consultar en [Amazon EC2 T3](https://aws.amazon.com/ec2/instance-types/t3/). El volumen gp3 incluye una base de 3000 IOPS y 125 MiB/s, descrita en [Amazon EBS gp3](https://docs.aws.amazon.com/ebs/latest/userguide/general-purpose.html).
+
+El rol permite descargar el archivo desde EC2 sin configurar claves AWS personales en la instancia. Si se desea listar el contenido del bucket con `aws s3 ls`, agregar tambien `s3:ListBucket` sobre el bucket.
+
+Configurar las siguientes reglas de entrada TCP en el Security Group:
+
+| Puerto | Uso | Origen |
+| --- | --- | --- |
+| `22` | Conexion SSH | IP publica del equipo local, con mascara `/32` |
+| `8084` | API Gateway para pruebas desde Postman | IP publica del equipo que realiza las pruebas, con mascara `/32` |
+| `9000` | Obtener token OAuth2 | Misma IP de pruebas; usar `9001` si se define `AUTH_SERVER_PORT=9001` |
+| `8761`, `8888` | Inspeccion opcional de Eureka y Config Server | IP de pruebas, solo cuando se necesite |
 
 Para pruebas academicas, abrir tambien los puertos de microservicios si se desea validar directamente:
 
@@ -110,7 +128,7 @@ Para pruebas academicas, abrir tambien los puertos de microservicios si se desea
 8080, 8081, 8082, 8083, 8085, 8090, 8091, 8092, 8093
 ```
 
-En un entorno mas estricto se recomienda exponer solo `8084` para acceder mediante API Gateway.
+Restringir tambien estos puertos opcionales a la IP de pruebas. PostgreSQL (`5432`) y Kafka (`9092`, `29092`) se comunican con los servicios mediante la red interna de Docker y no necesitan reglas de entrada desde Internet para este procedimiento.
 
 ## 6. Conectarse a EC2
 
@@ -305,4 +323,3 @@ docker compose down -v --remove-orphans
 - Para un ambiente real, exponer solo Gateway y protegerlo con HTTPS.
 - Mantener PostgreSQL y Kafka sin exposicion publica si se separan del host.
 - Eliminar el ZIP del bucket cuando ya no sea necesario.
-
