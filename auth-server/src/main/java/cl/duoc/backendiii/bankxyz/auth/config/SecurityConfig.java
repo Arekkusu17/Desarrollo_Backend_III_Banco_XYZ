@@ -65,6 +65,7 @@ public class SecurityConfig {
                 .scope("atm.read")
                 .scope("atm.write")
                 .scope("risk.read")
+                .scope("account.read")
                 .scope("payment.read")
                 .scope("payment.write")
                 .scope("customer.read")
