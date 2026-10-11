@@ -66,6 +66,7 @@ public class SecurityConfig {
                 .scope("atm.write")
                 .scope("risk.read")
                 .scope("account.read")
+                .scope("account.write")
                 .scope("payment.read")
                 .scope("payment.write")
                 .scope("customer.read")
@@ -88,7 +89,10 @@ public class SecurityConfig {
                 .scope("account.read")
                 .build();
 
-        return new InMemoryRegisteredClientRepository(demoClient, bffWeb, bffMobile, bffAtm);
+        RegisteredClient payments = client("ms-payment", bffAtmSecret, tokenSettings)
+                .scope("account.execute")
+                .build();
+        return new InMemoryRegisteredClientRepository(demoClient, bffWeb, bffMobile, bffAtm, payments);
     }
 
     @Bean

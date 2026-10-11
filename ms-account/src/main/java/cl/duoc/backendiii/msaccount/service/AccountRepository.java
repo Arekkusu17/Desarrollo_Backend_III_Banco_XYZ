@@ -15,18 +15,16 @@ import java.util.Optional;
 public class AccountRepository {
 
     private final JdbcTemplate jdbcTemplate;
+    private final AccountLedger ledger;
 
-    public AccountRepository(JdbcTemplate jdbcTemplate) {
+    public AccountRepository(JdbcTemplate jdbcTemplate, AccountLedger ledger) {
         this.jdbcTemplate = jdbcTemplate;
+        this.ledger = ledger;
     }
 
     public List<AccountSummaryResponse> findAccounts() {
-        return jdbcTemplate.query("""
-                SELECT account_id, customer_name, account_type, age, initial_balance,
-                       monthly_rate, interest_amount, final_balance
-                FROM monthly_interest_results
-                ORDER BY account_id
-                """, (rs, rowNum) -> new AccountSummaryResponse(
+        ledger.importLegacyAccounts();
+        return jdbcTemplate.query(summarySelect() + " ORDER BY a.account_id", (rs, rowNum) -> new AccountSummaryResponse(
                 rs.getLong("account_id"),
                 rs.getString("customer_name"),
                 rs.getString("account_type"),
@@ -39,12 +37,9 @@ public class AccountRepository {
     }
 
     public Optional<AccountSummaryResponse> findAccount(long accountId) {
-        List<AccountSummaryResponse> accounts = jdbcTemplate.query("""
-                SELECT account_id, customer_name, account_type, age, initial_balance,
-                       monthly_rate, interest_amount, final_balance
-                FROM monthly_interest_results
-                WHERE account_id = ?
-                """, (rs, rowNum) -> new AccountSummaryResponse(
+        ledger.importLegacyAccounts();
+        List<AccountSummaryResponse> accounts = jdbcTemplate.query(summarySelect() + " WHERE a.account_id = ?",
+                (rs, rowNum) -> new AccountSummaryResponse(
                 rs.getLong("account_id"),
                 rs.getString("customer_name"),
                 rs.getString("account_type"),
@@ -58,9 +53,10 @@ public class AccountRepository {
     }
 
     public Optional<AccountBalanceResponse> findBalance(long accountId) {
+        ledger.importLegacyAccounts();
         List<AccountBalanceResponse> balances = jdbcTemplate.query("""
-                SELECT account_id, customer_name, account_type, final_balance
-                FROM monthly_interest_results
+                SELECT account_id, customer_name, account_type, balance AS final_balance
+                FROM bank_accounts
                 WHERE account_id = ?
                 """, (rs, rowNum) -> new AccountBalanceResponse(
                 rs.getLong("account_id"),
@@ -106,8 +102,9 @@ public class AccountRepository {
     }
 
     public AccountStatusResponse status() {
+        ledger.importLegacyAccounts();
         return new AccountStatusResponse(
-                count("monthly_interest_results"),
+                count("bank_accounts"),
                 count("annual_statement_entries"),
                 count("daily_transaction_summary")
         );
@@ -116,5 +113,21 @@ public class AccountRepository {
     private long count(String tableName) {
         Long result = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM " + tableName, Long.class);
         return result == null ? 0 : result;
+    }
+
+    private String summarySelect() {
+        if (ledger.hasLegacyData()) {
+            return """
+                    SELECT a.account_id, a.customer_name, a.account_type, a.age,
+                           COALESCE(m.initial_balance, a.balance) AS initial_balance,
+                           COALESCE(m.monthly_rate, 0) AS monthly_rate,
+                           COALESCE(m.interest_amount, 0) AS interest_amount, a.balance AS final_balance
+                    FROM bank_accounts a LEFT JOIN monthly_interest_results m ON a.account_id=m.account_id
+                    """;
+        }
+        return """
+                SELECT a.account_id, a.customer_name, a.account_type, a.age, a.balance AS initial_balance,
+                       0 AS monthly_rate, 0 AS interest_amount, a.balance AS final_balance FROM bank_accounts a
+                """;
     }
 }
