@@ -1,319 +1,308 @@
-# Despliegue en entorno cloud AWS Banco XYZ
+# Despliegue en AWS con S3 y EC2 Banco XYZ
 
 ## Objetivo
 
-Este documento describe una estrategia de despliegue cloud para Banco XYZ usando AWS. La arquitectura local con Docker Compose se puede llevar a un entorno administrado mediante imagenes Docker publicadas en Amazon ECR, servicios ejecutados en Amazon ECS Fargate, base de datos en Amazon RDS PostgreSQL, mensajeria en Amazon MSK o Amazon EventBridge, y balanceo mediante Application Load Balancer.
+Este documento describe un despliegue simple del proyecto Banco XYZ en AWS. El enfoque consiste en comprimir el codigo fuente, subir el archivo ZIP a Amazon S3, copiarlo desde una instancia EC2 y ejecutar la solucion con Docker Compose.
 
-## Arquitectura propuesta en AWS
+Este procedimiento permite validar la aplicacion en un entorno cloud basico, manteniendo la misma arquitectura usada localmente:
 
-| Componente local | Servicio AWS recomendado |
+- Microservicios Spring Boot.
+- Docker Compose.
+- PostgreSQL en contenedor.
+- Kafka en contenedor.
+- Config Server.
+- Eureka Discovery Server.
+- Auth Server OAuth2.
+- API Gateway.
+- BFF Web, Mobile y ATM.
+- `ms-account`, `ms-payment`, `ms-customer`.
+- `batch-service`, `risk-service` y `notification-service`.
+
+## 1. Requisitos
+
+En el equipo local:
+
+- Git.
+- AWS CLI configurado.
+- Acceso a una cuenta AWS.
+- Llave SSH para conectarse a EC2.
+
+En AWS:
+
+- Bucket S3 para almacenar el ZIP.
+- Instancia EC2 con Amazon Linux 2023 o Ubuntu.
+- Security Group con puertos necesarios abiertos.
+
+## 2. Preparar el proyecto local
+
+Desde la raiz del repositorio:
+
+```bash
+git checkout develop
+git pull origin develop
+```
+
+Ejecutar pruebas antes de empaquetar:
+
+```bash
+./mvnw test
+```
+
+Resultado esperado:
+
+```text
+BUILD SUCCESS
+```
+
+## 3. Crear ZIP del proyecto
+
+Crear el archivo ZIP sin incluir artefactos pesados:
+
+```bash
+zip -r banco-xyz-semana-9.zip . \
+  -x "*.git*" \
+  -x "*/target/*" \
+  -x "*/.DS_Store" \
+  -x "banco-xyz-semana-9.zip"
+```
+
+Validar que el archivo existe:
+
+```bash
+ls -lh banco-xyz-semana-9.zip
+```
+
+## 4. Subir ZIP a S3
+
+Crear un bucket si aun no existe:
+
+```bash
+aws s3 mb s3://banco-xyz-semana-9-<identificador>
+```
+
+Subir el ZIP:
+
+```bash
+aws s3 cp banco-xyz-semana-9.zip s3://banco-xyz-semana-9-<identificador>/banco-xyz-semana-9.zip
+```
+
+Verificar:
+
+```bash
+aws s3 ls s3://banco-xyz-semana-9-<identificador>/
+```
+
+## 5. Crear instancia EC2
+
+Configuracion sugerida:
+
+| Item | Valor recomendado |
 | --- | --- |
-| Contenedores Docker | Amazon ECS Fargate |
-| Imagenes Docker | Amazon ECR |
-| PostgreSQL | Amazon RDS for PostgreSQL |
-| Kafka | Amazon MSK |
-| API Gateway interno del proyecto | ECS Service detras de Application Load Balancer |
-| Config Server | ECS Service privado |
-| Eureka Discovery Server | ECS Service privado |
-| OAuth2 Auth Server | ECS Service privado o publico controlado por ALB |
-| Logs de aplicacion | Amazon CloudWatch Logs |
-| Secretos | AWS Secrets Manager o SSM Parameter Store |
-| Red | Amazon VPC con subnets publicas y privadas |
+| AMI | Amazon Linux 2023 o Ubuntu 22.04 |
+| Tipo | `t3.large` o superior |
+| Disco | 30 GB gp3 |
+| IAM Role | Permiso de lectura al bucket S3 |
+| Security Group | Puertos `22`, `8084`, `9000`, `8761` y `8888` segun necesidad |
 
-## 1. Preparar cuenta y herramientas
-
-Instalar y configurar:
-
-```bash
-aws --version
-docker --version
-git --version
-```
-
-Configurar credenciales:
-
-```bash
-aws configure
-```
-
-Seleccionar una region, por ejemplo:
+Para pruebas academicas, abrir tambien los puertos de microservicios si se desea validar directamente:
 
 ```text
-us-east-1
+8080, 8081, 8082, 8083, 8085, 8090, 8091, 8092, 8093
 ```
 
-## 2. Crear repositorios ECR
+En un entorno mas estricto se recomienda exponer solo `8084` para acceder mediante API Gateway.
 
-Crear un repositorio por servicio:
+## 6. Conectarse a EC2
+
+Ejemplo para Amazon Linux:
 
 ```bash
-aws ecr create-repository --repository-name banco-xyz/config-server
-aws ecr create-repository --repository-name banco-xyz/discovery-server
-aws ecr create-repository --repository-name banco-xyz/auth-server
-aws ecr create-repository --repository-name banco-xyz/api-gateway
-aws ecr create-repository --repository-name banco-xyz/ms-account
-aws ecr create-repository --repository-name banco-xyz/ms-payment
-aws ecr create-repository --repository-name banco-xyz/ms-customer
-aws ecr create-repository --repository-name banco-xyz/batch-service
-aws ecr create-repository --repository-name banco-xyz/bff-web
-aws ecr create-repository --repository-name banco-xyz/bff-mobile
-aws ecr create-repository --repository-name banco-xyz/bff-atm
-aws ecr create-repository --repository-name banco-xyz/risk-service
-aws ecr create-repository --repository-name banco-xyz/notification-service
+ssh -i llave.pem ec2-user@<EC2_PUBLIC_IP>
 ```
 
-Autenticarse contra ECR:
+Ejemplo para Ubuntu:
 
 ```bash
-aws ecr get-login-password --region us-east-1 | \
-  docker login --username AWS --password-stdin <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com
+ssh -i llave.pem ubuntu@<EC2_PUBLIC_IP>
 ```
 
-## 3. Construir imagenes Docker
+## 7. Instalar dependencias en EC2
 
-Desde la raiz del proyecto:
+### Amazon Linux 2023
 
 ```bash
-docker compose build
+sudo dnf update -y
+sudo dnf install -y docker unzip git awscli
+sudo systemctl enable docker
+sudo systemctl start docker
+sudo usermod -aG docker $USER
 ```
 
-Etiquetar imagenes:
+Cerrar y volver a abrir la sesion SSH para aplicar el grupo `docker`.
+
+Validar Docker Compose:
 
 ```bash
-docker tag desarrollo_backend_iii_banco_xyz-config-server:latest <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/banco-xyz/config-server:latest
-docker tag desarrollo_backend_iii_banco_xyz-discovery-server:latest <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/banco-xyz/discovery-server:latest
-docker tag desarrollo_backend_iii_banco_xyz-auth-server:latest <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/banco-xyz/auth-server:latest
-docker tag desarrollo_backend_iii_banco_xyz-api-gateway:latest <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/banco-xyz/api-gateway:latest
-docker tag desarrollo_backend_iii_banco_xyz-ms-account:latest <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/banco-xyz/ms-account:latest
-docker tag desarrollo_backend_iii_banco_xyz-ms-payment:latest <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/banco-xyz/ms-payment:latest
-docker tag desarrollo_backend_iii_banco_xyz-ms-customer:latest <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/banco-xyz/ms-customer:latest
-docker tag desarrollo_backend_iii_banco_xyz-batch-service:latest <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/banco-xyz/batch-service:latest
-docker tag desarrollo_backend_iii_banco_xyz-bff-web:latest <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/banco-xyz/bff-web:latest
-docker tag desarrollo_backend_iii_banco_xyz-bff-mobile:latest <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/banco-xyz/bff-mobile:latest
-docker tag desarrollo_backend_iii_banco_xyz-bff-atm:latest <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/banco-xyz/bff-atm:latest
-docker tag desarrollo_backend_iii_banco_xyz-risk-service:latest <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/banco-xyz/risk-service:latest
-docker tag desarrollo_backend_iii_banco_xyz-notification-service:latest <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/banco-xyz/notification-service:latest
+docker compose version
 ```
 
-Publicar imagenes:
+Si Docker Compose no esta disponible:
 
 ```bash
-docker push <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/banco-xyz/config-server:latest
-docker push <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/banco-xyz/discovery-server:latest
-docker push <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/banco-xyz/auth-server:latest
-docker push <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/banco-xyz/api-gateway:latest
-docker push <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/banco-xyz/ms-account:latest
-docker push <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/banco-xyz/ms-payment:latest
-docker push <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/banco-xyz/ms-customer:latest
-docker push <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/banco-xyz/batch-service:latest
-docker push <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/banco-xyz/bff-web:latest
-docker push <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/banco-xyz/bff-mobile:latest
-docker push <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/banco-xyz/bff-atm:latest
-docker push <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/banco-xyz/risk-service:latest
-docker push <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/banco-xyz/notification-service:latest
+sudo mkdir -p /usr/local/lib/docker/cli-plugins
+sudo curl -SL https://github.com/docker/compose/releases/download/v2.29.7/docker-compose-linux-x86_64 \
+  -o /usr/local/lib/docker/cli-plugins/docker-compose
+sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
 ```
 
-## 4. Crear infraestructura base
+### Ubuntu
 
-Crear una VPC con:
+```bash
+sudo apt update
+sudo apt install -y docker.io docker-compose-plugin unzip git awscli
+sudo systemctl enable docker
+sudo systemctl start docker
+sudo usermod -aG docker $USER
+```
 
-- Subnets publicas para Application Load Balancer.
-- Subnets privadas para ECS, RDS y MSK.
-- NAT Gateway para salida a internet desde servicios privados.
-- Security Groups separados por capa.
+Cerrar y volver a abrir la sesion SSH para aplicar el grupo `docker`.
 
-Reglas minimas:
+## 8. Copiar ZIP desde S3 a EC2
 
-| Origen | Destino | Puerto |
-| --- | --- | --- |
-| Internet | ALB | `443` |
-| ALB | `api-gateway` | `8084` |
-| ECS interno | Config Server | `8888` |
-| ECS interno | Eureka | `8761` |
-| ECS interno | Auth Server | `9000` |
-| ECS interno | RDS PostgreSQL | `5432` |
-| ECS interno | MSK Kafka | `9092` |
+En la instancia EC2:
 
-## 5. Crear base de datos
+```bash
+aws s3 cp s3://banco-xyz-semana-9-<identificador>/banco-xyz-semana-9.zip .
+```
 
-Crear RDS PostgreSQL:
+Descomprimir:
 
-- Motor: PostgreSQL.
-- Base de datos: `banco_xyz`.
-- Usuario: `banco`.
-- Password: administrar en Secrets Manager.
-- Acceso: solo desde Security Group de ECS.
+```bash
+mkdir banco-xyz-semana-9
+unzip banco-xyz-semana-9.zip -d banco-xyz-semana-9
+cd banco-xyz-semana-9
+```
 
-Variables requeridas por servicios con base de datos:
+## 9. Levantar la solucion
+
+Ejecutar:
+
+```bash
+docker compose up -d --build --remove-orphans
+```
+
+Verificar contenedores:
+
+```bash
+docker compose ps
+```
+
+Esperar 60 a 90 segundos para que Spring Boot, Config Server y Eureka completen el arranque.
+
+Si el Gateway no carga rutas en el primer intento:
+
+```bash
+docker compose restart api-gateway
+```
+
+## 10. Validar servicios desde EC2
+
+Health Gateway:
+
+```bash
+curl http://localhost:8084/actuator/health
+```
+
+Health microservicios:
+
+```bash
+curl http://localhost:8091/actuator/health
+curl http://localhost:8092/actuator/health
+curl http://localhost:8093/actuator/health
+```
+
+Obtener token:
+
+```bash
+curl -u banco-xyz-demo:demo-secret \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  --data-urlencode "grant_type=client_credentials" \
+  --data-urlencode "scope=web.read mobile.read atm.read atm.write risk.read account.read payment.read payment.write customer.read customer.write" \
+  http://localhost:9000/oauth2/token
+```
+
+Probar Gateway con token:
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  http://localhost:8084/gateway/payments
+```
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  http://localhost:8084/gateway/customers
+```
+
+## 11. Validar desde Postman
+
+Usar la coleccion:
 
 ```text
-SPRING_DATASOURCE_URL=jdbc:postgresql://<RDS_ENDPOINT>:5432/banco_xyz
-SPRING_DATASOURCE_USERNAME=banco
-SPRING_DATASOURCE_PASSWORD=<secret>
+postman/Banco_XYZ_Semana_8.postman_collection.json
 ```
 
-## 6. Crear mensajeria
+Configurar variables:
 
-Opcion recomendada:
+| Variable | Valor |
+| --- | --- |
+| `authBaseUrl` | `http://<EC2_PUBLIC_IP>:9000` |
+| `gatewayBaseUrl` | `http://<EC2_PUBLIC_IP>:8084` |
+| `accountServiceBaseUrl` | `http://<EC2_PUBLIC_IP>:8091` |
+| `paymentServiceBaseUrl` | `http://<EC2_PUBLIC_IP>:8092` |
+| `customerServiceBaseUrl` | `http://<EC2_PUBLIC_IP>:8093` |
 
-- Amazon MSK para mantener compatibilidad Kafka.
+Orden recomendado:
 
-Variables:
+1. Obtener token OAuth2 completo.
+2. Probar health de Gateway y microservicios.
+3. Probar cuentas.
+4. Probar pagos.
+5. Probar clientes.
+6. Probar flujo ATM asincrono.
+7. Probar resiliencia de riesgo y compensacion.
 
-```text
-KAFKA_BOOTSTRAP_SERVERS=<MSK_BOOTSTRAP_SERVERS>
-```
+## 12. Escalabilidad basica en EC2
 
-Servicios que usan Kafka:
+Para demostrar escalabilidad horizontal en Docker Compose se puede levantar mas de una instancia de un servicio que no publique puerto fijo directo al host.
 
-- `batch-service`
-- `bff-atm`
-- `risk-service`
-- `notification-service`
-
-## 7. Crear cluster ECS
+Ejemplo conceptual:
 
 ```bash
-aws ecs create-cluster --cluster-name banco-xyz-cluster
+docker compose up -d --scale ms-account=2 --scale ms-payment=2 --scale ms-customer=2
 ```
 
-Crear una task definition por servicio. Cada task debe definir:
+Nota: si un servicio expone un puerto fijo al host, Docker Compose puede impedir escalarlo directamente. Para una demostracion simple, se recomienda acceder por `api-gateway`, Eureka y nombres internos de servicio.
 
-- Imagen ECR.
-- Puerto del contenedor.
-- Variables de entorno.
-- Log group de CloudWatch.
-- CPU y memoria.
-- Rol de ejecucion ECS.
+## 13. Detener ambiente
 
-## 8. Variables por servicio
-
-Variables comunes:
-
-```text
-CONFIG_SERVER_URL=http://config-server:8888
-EUREKA_URL=http://discovery-server:8761/eureka/
-OAUTH_ISSUER_URI=http://auth-server:9000
-```
-
-Variables para `auth-server`:
-
-```text
-OAUTH_ISSUER=http://auth-server:9000
-OAUTH_DEMO_SECRET=<secret>
-OAUTH_BFF_WEB_SECRET=<secret>
-OAUTH_BFF_MOBILE_SECRET=<secret>
-OAUTH_BFF_ATM_SECRET=<secret>
-```
-
-Variables para BFF:
-
-```text
-ACCOUNT_SERVICE_URL=http://ms-account
-OAUTH_TOKEN_URL=http://auth-server:9000/oauth2/token
-```
-
-Variables para servicios con PostgreSQL:
-
-```text
-SPRING_DATASOURCE_URL=jdbc:postgresql://<RDS_ENDPOINT>:5432/banco_xyz
-SPRING_DATASOURCE_USERNAME=banco
-SPRING_DATASOURCE_PASSWORD=<secret>
-```
-
-## 9. Orden de despliegue recomendado
-
-1. `config-server`
-2. `discovery-server`
-3. `auth-server`
-4. `postgres` administrado en RDS
-5. `kafka` administrado en MSK
-6. `batch-service`
-7. `ms-account`
-8. `ms-payment`
-9. `ms-customer`
-10. `risk-service`
-11. `notification-service`
-12. `bff-web`
-13. `bff-mobile`
-14. `bff-atm`
-15. `api-gateway`
-
-## 10. Balanceo y escalabilidad horizontal
-
-En ECS, aumentar instancias de un servicio:
+Detener contenedores:
 
 ```bash
-aws ecs update-service \
-  --cluster banco-xyz-cluster \
-  --service ms-account \
-  --desired-count 2
+docker compose down --remove-orphans
 ```
 
-Aplicar el mismo enfoque para:
-
-- `ms-payment`
-- `ms-customer`
-- `bff-web`
-- `bff-mobile`
-- `api-gateway`
-
-Los servicios se registran en Eureka y el Gateway enruta mediante balanceo a las instancias disponibles.
-
-## 11. Exposicion publica
-
-Exponer solo el Application Load Balancer asociado a `api-gateway`.
-
-Endpoints externos esperados:
-
-```text
-https://<dominio>/gateway/web/**
-https://<dominio>/gateway/mobile/**
-https://<dominio>/gateway/atm/**
-https://<dominio>/gateway/payments
-https://<dominio>/gateway/customers
-```
-
-Configurar HTTPS con AWS Certificate Manager.
-
-## 12. Monitoreo
-
-Configurar:
-
-- CloudWatch Logs por servicio.
-- Alarmas por CPU y memoria.
-- Alarmas por errores HTTP 5xx en ALB.
-- Alarmas por conexiones RDS.
-- Alarmas por lag de consumidores Kafka en MSK.
-
-## 13. Validacion posterior al despliegue
-
-Validar health checks:
+Detener y eliminar volumenes locales:
 
 ```bash
-curl https://<dominio>/actuator/health
+docker compose down -v --remove-orphans
 ```
 
-Obtener token OAuth2 contra el Auth Server expuesto de forma controlada o mediante ruta interna autorizada.
+## 14. Consideraciones de seguridad
 
-Ejecutar pruebas funcionales equivalentes a la coleccion Postman:
-
-- Token OAuth2 valido.
-- Rechazo sin token.
-- Rechazo por scope incorrecto.
-- Consulta de cuentas.
-- Deposito y transferencia.
-- Gestion de cliente.
-- Flujo ATM asincrono.
-- Compensacion por rechazo de riesgo.
-
-## 14. Buenas practicas de seguridad
-
-- No guardar secretos en archivos YAML ni en Git.
-- Usar Secrets Manager o SSM Parameter Store.
-- Exponer publicamente solo el ALB.
-- Mantener RDS y MSK en subnets privadas.
-- Usar HTTPS obligatorio.
-- Separar roles IAM por servicio.
-- Registrar logs y auditoria de operaciones criticas.
+- No subir llaves SSH ni secretos al ZIP.
+- Usar IAM Role en EC2 para leer desde S3.
+- Abrir solo los puertos necesarios en el Security Group.
+- Para un ambiente real, exponer solo Gateway y protegerlo con HTTPS.
+- Mantener PostgreSQL y Kafka sin exposicion publica si se separan del host.
+- Eliminar el ZIP del bucket cuando ya no sea necesario.
 
