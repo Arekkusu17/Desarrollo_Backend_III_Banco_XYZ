@@ -4,7 +4,17 @@
 
 Procedimiento academico: subir codigo como ZIP a S3, descargarlo en una EC2 y ejecutar Docker Compose. No se requiere ECR, ECS, Kubernetes, balanceador AWS ni un pipeline de despliegue.
 
-La version candidata es feature/eft-compliance hasta aprobar el PR a develop. La validacion local esta completada; las verificaciones AWS de esta guia siguen pendientes. El informe tecnico y el video no se generan en esta etapa.
+La validacion funcional y el escalado en EC2 se completaron el 11 de octubre de 2026, segun las corridas y capturas obtenidas.
+
+| Recurso | Configuracion validada |
+| --- | --- |
+| EC2 | Amazon Linux 2023; IP publica 34.229.100.153 |
+| S3 | Bucket privado eft-afv-s9; banco-xyz-semana-9.zip |
+| Proyecto | $HOME/banco-xyz-semana-9 |
+| Acceso HTTPS | Gateway 8084; Auth externo 9001, interno 9000 |
+| Runtime | Docker Compose 2.29.7 y Java 21 |
+
+Recorrido: **ZIP local → S3 privado → EC2 → Docker Compose → pruebas Postman**.
 
 ## 1. Requisitos EC2
 
@@ -18,9 +28,9 @@ La version candidata es feature/eft-compliance hasta aprobar el PR a develop. La
 | IAM | Rol de instancia con s3:GetObject para el ZIP; s3:ListBucket solo si se necesita listar |
 | Software | Docker Engine, Docker Compose 2.24.4 o posterior, AWS CLI, unzip, curl, jq y Java 21/keytool |
 
-El dimensionamiento es una estimacion para la demostracion, no una capacidad garantizada ni un resultado de carga. No usar una instancia micro para todo el stack. Durante el build, limitar concurrencia; durante el escalado observar memoria y OOM. Si es insuficiente, aumentar capacidad antes de repetir.
+El dimensionamiento es una estimacion, no un resultado de carga. Limitar concurrencia durante el build y observar memoria/OOM al escalar; ampliar capacidad si es insuficiente.
 
-t3.large tiene 2 vCPU y 8 GiB segun [AWS T3](https://aws.amazon.com/ec2/instance-types/t3/). La recomendacion de usarla es propia del proyecto. Docker Compose debe soportar los tags de override usados por el repo; ver [merge de Compose](https://docs.docker.com/reference/compose-file/merge/).
+[Ver configuracion de la EC2 utilizada](../evidencias/despliegue/01-configuracion-ec2.png).
 
 Reglas de entrada TCP, siempre desde la IP publica de pruebas con mascara /32:
 
@@ -34,11 +44,15 @@ Reglas de entrada TCP, siempre desde la IP publica de pruebas con mascara /32:
 
 No abrir 5432, 9092, 29092, 8888, 8761, 8080 ni 8085 a Internet. BFFs se prueban por Gateway. Inspeccionar Eureka mediante SSH o un tunel, no mediante acceso publico. No usar 0.0.0.0/0 para las reglas anteriores.
 
-El Compose base publica puertos en el host; el Security Group es la restriccion de acceso externa en esta demostracion. No equivale a una configuracion de produccion. Kafka no tiene volumen persistente explicito; PostgreSQL si. No prometer alta disponibilidad del host, de la base ni del broker.
+El Compose base publica puertos en el host; el Security Group restringe el acceso externo.
+
+![Security Group: puertos de laboratorio restringidos a la IP de pruebas con mascara /32](../evidencias/despliegue/03-security-group.png)
+
+*Usar la IP publica actual del equipo de pruebas; no copiar una IP /32 antigua.*
 
 ## 2. Preparar ZIP local
 
-Requisitos locales: Git, zip/unzip y AWS CLI configurado. Despues de guardar/commitear la version candidata y ejecutar ./mvnw verify, desde la raiz del repositorio:
+Requisitos locales: Git, zip/unzip y AWS CLI configurado. Preparar el ZIP despues de revisar y aprobar los cambios, hacer sus commits y validar la version candidata con ./mvnw verify. Desde la raiz del repositorio:
 
 ```bash
 git status --short
@@ -49,16 +63,18 @@ zip -d ../banco-xyz-semana-9.zip '*.p12' '*.jks' '*.pem' '*.key'
 unzip -l ../banco-xyz-semana-9.zip
 ```
 
-git archive incluye solo archivos versionados del commit: no agrega target, output, .git, el verificador local ignorado ni archivos no commiteados. El paso zip -d retira los tres keystores de laboratorio ya versionados en los BFF y otros archivos de claves con esas extensiones. Revisar igualmente el contenido antes de subirlo. Registrar el hash mostrado para identificar la evidencia AWS. El ZIP no incluye historial Git; el override HTTPS usara certificados nuevos externos al classpath.
+git archive incluye solo el commit, no cambios pendientes, target, output o .git. zip -d excluye keystores y claves; revisar el ZIP y registrar el hash. HTTPS usara certificados nuevos externos al classpath.
 
-Subir a un bucket privado existente, reemplazando el nombre:
+Subir al bucket privado utilizado en la demostracion, o reemplazarlo por el propio:
 
 ```bash
-export BUCKET='reemplazar-por-bucket-propio'
+export BUCKET='eft-afv-s9'
 aws s3 cp ../banco-xyz-semana-9.zip "s3://$BUCKET/banco-xyz-semana-9.zip"
 ```
 
-Usar IAM Role en EC2; no copiar credenciales AWS personales ni la llave SSH al ZIP.
+Usar IAM Role en EC2 que permita obtener el archivo de S3; no copiar credenciales AWS personales ni la llave SSH al ZIP.
+
+![Proyecto empaquetado como ZIP en el bucket S3 privado](../evidencias/despliegue/04-proyecto-en-s3.png)
 
 ## 3. SSH e instalacion (Amazon Linux 2023)
 
@@ -66,7 +82,7 @@ Desde el equipo local:
 
 ```bash
 chmod 400 llave.pem
-ssh -i llave.pem ec2-user@IP_PUBLICA_EC2
+ssh -i llave.pem ec2-user@34.229.100.153
 ```
 
 Dentro de EC2:
@@ -77,7 +93,7 @@ sudo systemctl enable --now docker
 sudo usermod -aG docker "$USER"
 ```
 
-Cerrar y volver a abrir SSH para aplicar el grupo docker. Amazon Linux suele incluir curl; si falta, instalar el paquete curl disponible en la AMI. Para Java/keytool ver [Corretto 21](https://docs.aws.amazon.com/corretto/latest/corretto-21-ug/amazon-linux-install.html); AWS documenta [AWS CLI en AL2023](https://docs.aws.amazon.com/linux/al2023/ug/awscli2.html).
+Cerrar y volver a abrir SSH para aplicar el grupo docker.
 
 Si Compose no esta instalado, instalar una version fijada compatible:
 
@@ -92,14 +108,14 @@ java -version
 aws --version
 ```
 
-2.29.7 es una version fijada para esta guia, no se afirma que sea la mas reciente. La instalacion manual no se actualiza automaticamente; procedimiento basado en [Docker Compose para Linux](https://docs.docker.com/compose/install/linux/). Para Ubuntu, usar el [repositorio oficial de Docker](https://docs.docker.com/engine/install/ubuntu/) e instalar Java 21 y AWS CLI segun la distribucion; no ejecutar comandos dnf en Ubuntu.
+2.29.7 es una version fijada para esta guia, no se afirma que sea la mas reciente.
 
 ## 4. Descargar y descomprimir
 
 Dentro de EC2:
 
 ```bash
-export BUCKET='reemplazar-por-bucket-propio'
+export BUCKET='eft-afv-s9'
 aws s3 cp "s3://$BUCKET/banco-xyz-semana-9.zip" "$HOME/banco-xyz-semana-9.zip"
 mkdir -p "$HOME/banco-xyz-semana-9"
 unzip "$HOME/banco-xyz-semana-9.zip" -d "$HOME/banco-xyz-semana-9"
@@ -107,16 +123,19 @@ cd "$HOME/banco-xyz-semana-9"
 chmod +x mvnw
 ```
 
-Usar una carpeta nueva por version para evitar mezclar archivos antiguos. AccessDenied al descargar indica revisar rol/permisos del objeto, no publicar el bucket.
+Este procedimiento es para la primera instalacion. Para actualizar el stack existente, conservar la carpeta y el nombre del proyecto Compose; cambiarlo puede hacer que se use otro volumen PostgreSQL. Revisar los archivos que se reemplazan y conservar output/tls.
+
+> `Unable to locate credentials` indica que falta una identidad AWS disponible: asignar a EC2 el rol IAM autorizado para S3. `AccessDenied` indica revisar permisos del rol y del objeto.
 
 ## 5. Certificados y arranque HTTPS
 
 Antes del primer arranque, reemplazar la IP y elegir una clave de laboratorio sin compartirla:
 
 ```bash
-export TLS_PUBLIC_IP='IP_PUBLICA_EC2'
+export TLS_PUBLIC_IP='34.229.100.153'
 read -rsp 'Clave para el almacen TLS: ' TLS_STORE_PASSWORD
 export TLS_STORE_PASSWORD
+printf '\n'
 export AUTH_SERVER_PORT=9001
 TLS_COPY_BFF=false bash scripts/generar-certificados.sh
 export COMPOSE_FILE=docker-compose.yml:docker-compose.secure.yml
@@ -126,11 +145,25 @@ docker compose up -d --remove-orphans
 docker compose ps
 ```
 
-El unico script de certificados es scripts/generar-certificados.sh. Genera bank.p12, truststore.p12 y bank.crt bajo output/tls. El override los monta de solo lectura; TLS_COPY_BFF=false evita copiar claves al codigo fuente.
+El script genera bank.p12, truststore.p12 y bank.crt en output/tls, montados de solo lectura. TLS_COPY_BFF=false evita copiar claves al codigo fuente. Al reconectar SSH, restaurar COMPOSE_FILE, AUTH_SERVER_PORT, TLS_PUBLIC_IP y la misma clave; nunca guardarla en el repo.
 
-Repetir los exports COMPOSE_FILE, AUTH_SERVER_PORT y la misma clave al reconectar SSH antes de operar el stack. No guardar secretos en el repo. Si la IP publica cambia, generar certificados en una carpeta nueva y reemplazar el juego completo con el stack detenido; el script conserva certificados existentes y no modifica sus SAN.
+![Contenedores del stack levantados en EC2 durante el arranque inicial](../evidencias/despliegue/02-servicios-docker-compose.png)
 
-Los servicios arrancan asincronamente; verificar salud y logs, no depender de una espera fija. Si falta memoria o aparecen contenedores Exited, diagnosticar antes de continuar:
+*Captura del arranque inicial, con Auth publicado en 9000. La configuracion final usa 9001 y dos replicas por microservicio. Running no implica salud ni configuracion lista.*
+
+<details>
+<summary>Rotar certificados o recuperar una clave olvidada</summary>
+
+Detener el stack sin -v, conservar output/tls y regenerar con TLS_REGENERATE=true. El script prepara el nuevo juego y respalda el anterior en output/tls/backup.*. Si se olvido la clave, elegir una nueva de al menos seis caracteres; la rotacion completa no requiere la anterior.
+
+Con el override de escalabilidad, incluir TLS_SCALE_NETWORK=true para conservar la cobertura del pool. Arrancar todos los servicios TLS con la nueva clave y reimportar el certificado publico en Postman.
+
+</details>
+
+<details>
+<summary>Diagnosticar arranque, memoria o rutas 404</summary>
+
+Los servicios arrancan asincronamente. Comprobar salud y logs antes de continuar:
 
 ```bash
 docker compose logs --tail=100 config-server discovery-server auth-server api-gateway batch-service
@@ -143,52 +176,46 @@ curl --fail --cacert output/tls/bank.crt https://localhost:8092/actuator/health
 curl --fail --cacert output/tls/bank.crt https://localhost:8093/actuator/health
 ```
 
-Consultar Eureka desde EC2 con curl http://localhost:8761/eureka/apps -H 'Accept: application/json'. Esperar registros UP. Revisar rutas/configuracion ante 404; si el Gateway arranco sin configuracion, reiniciarlo una vez que Config Server este listo.
+Las consultas directas a 8091/8092/8093 solo funcionan sin el override de escalabilidad. En modo escalado usar el Gateway. Consultar Eureka desde EC2 con curl http://localhost:8761/eureka/apps -H 'Accept: application/json' y esperar registros UP; Config Server no se registra como cliente Eureka.
+
+Un Gateway con estado global UP pero clientConfigServer UNKNOWN y "no property sources located" no confirma que las rutas esten cargadas. Comprobar primero Config Server:
+
+```bash
+curl --fail http://localhost:8888/actuator/health
+curl --fail http://localhost:8888/api-gateway/default
+```
+
+La segunda respuesta debe incluir propertySources con classpath:/config-repo/api-gateway.yml y las rutas. Si Config Server ya esta disponible pero el Gateway no las cargo al arrancar, ejecutar `docker compose restart api-gateway` y volver a comprobar su salud: clientConfigServer debe estar UP y mostrar la fuente cargada. No reiniciar todo el stack por este caso.
+
+</details>
 
 ## 6. Pruebas desde Postman y EC2
 
 Descargar solo el certificado publico al equipo local:
 
 ```bash
-scp -i llave.pem ec2-user@IP_PUBLICA_EC2:~/banco-xyz-semana-9/output/tls/bank.crt ./bank-ec2.crt
+scp -i llave.pem ec2-user@34.229.100.153:~/banco-xyz-semana-9/output/tls/bank.crt ./banco-xyz-ec2.pem
 ```
 
-Importarlo como CA en Postman. No descargar ni compartir bank.p12 o truststore.p12. Certificado autofirmado: confianza manual de laboratorio, no certificado de una CA publica.
+En Postman, Settings > Certificates > CA Certificates: activar e importar banco-xyz-ec2.pem. Mantener SSL certificate verification activado.
 
-Configurar la coleccion existente:
+Importar la [coleccion](../postman/Banco_XYZ_Semana_8.postman_collection.json) y el [environment EC2](../postman/Banco_XYZ_EC2_Semana_9.postman_environment.json). Seleccionar el entorno y actualizar URLs si cambia la IP.
 
-Importar tambien `postman/Banco_XYZ_EC2_Semana_9.postman_environment.json` y seleccionar el entorno EC2. Incluye la IP actual 34.229.100.153; la tabla siguiente permite ajustarla si cambia.
+Seguir los bloques de [instrucciones](instrucciones.md#5-postman-y-regresion-funcional), incluidos SQL/CSV batch. Validar primero con una instancia y luego escalar. Batch se consulta por tunel en localhost:18080; desactivar la falla de riesgo al terminar.
 
-| Variable | Valor EC2 |
-| --- | --- |
-| authBaseUrl | https://IP_PUBLICA_EC2:9001 |
-| gatewayBaseUrl | https://IP_PUBLICA_EC2:8084 |
-| accountServiceBaseUrl | https://IP_PUBLICA_EC2:8091 |
-| paymentServiceBaseUrl | https://IP_PUBLICA_EC2:8092 |
-| customerServiceBaseUrl | https://IP_PUBLICA_EC2:8093 |
-| riskBaseUrl | http://IP_PUBLICA_EC2:8090 |
-
-Seguir [instrucciones de pruebas](instrucciones.md), incluyendo las verificaciones manuales no cubiertas por la coleccion. Completar regresion con una instancia por servicio antes de escalar. Los requests de riesgo son solo para la demostracion y deben desactivarse al terminar.
-
-Dentro de EC2, obtener token para las siguientes lecturas:
-
-```bash
-TOKEN=$(curl --fail --silent --show-error --cacert output/tls/bank.crt \
-  -u banco-xyz-demo:demo-secret \
-  --data-urlencode 'grant_type=client_credentials' \
-  --data-urlencode 'scope=web.read mobile.read atm.read atm.write risk.read account.read account.write payment.read payment.write customer.read customer.write' \
-  https://localhost:9001/oauth2/token | jq -er '.access_token')
-curl --fail --cacert output/tls/bank.crt \
-  -H "Authorization: Bearer $TOKEN" https://localhost:8084/gateway/cuentas/119/saldo
-```
-
-Confirmar los tres jobs COMPLETED, sus particiones, rechazos y reporte anual con los comandos SQL/docker cp de las instrucciones. No ejecutar pruebas de carga ni atribuir estos resultados a COBOL.
+> Si localhost responde pero Postman tiene timeout TCP, revisar docker compose port auth-server 9000, el puerto del Security Group y la IP /32 actual. La conexion falla antes de validar TLS; no desactivar su verificacion.
 
 ## 7. Escalabilidad temporal de los tres microservicios
 
 El criterio 6 de la pauta solicita Docker y escalabilidad horizontal de tres microservicios en la nube. No fija dos replicas permanentes. Esta demostracion usa dos temporalmente en una EC2; no demuestra alta disponibilidad entre hosts.
 
-Aplicar el override, que elimina container_name y los puertos fijos de ms-account, ms-payment y ms-customer. Tambien anuncia la IP individual de cada replica en Eureka: un hostname compartido puede dirigir las conexiones HTTPS al mismo contenedor aunque Eureka tenga dos registros. La red usa subnet 172.30.90.0/24 con asignacion limitada a 172.30.90.0/26 y gateway 172.30.90.254; el certificado cubre todo el pool, no una fotografia de las IP actuales.
+docker-compose.scale.yml elimina los nombres y puertos fijos y anuncia IP individuales en Eureka. TLS cubre el pool completo, incluso si cambian las IP de los contenedores.
+
+| Red | Valor |
+| --- | --- |
+| Subnet | 172.30.90.0/24 |
+| Pool de asignacion y cobertura TLS | 172.30.90.0/26: 64 direcciones |
+| Gateway Docker | 172.30.90.254 |
 
 Antes de cambiar la red, revisar que 172.30.90.0/24 no se superponga con otra red Docker ni con rutas de la VPC/VPN. Si hay conflicto, no ejecutar la migracion: modificar el pool y su cobertura TLS juntos. Revisar las redes y rutas con:
 
@@ -198,7 +225,7 @@ docker network inspect $(docker network ls -q) \
 ip route
 ```
 
-Conservar TLS_PUBLIC_IP (la IP publica de EC2), TLS_PUBLIC_DNS si se utilizo, TLS_STORE_PASSWORD y AUTH_SERVER_PORT con los mismos valores del despliegue. El cambio de IPAM requiere recrear la red. Hay una interrupcion temporal del stack; el comando down SIN -v conserva el volumen de PostgreSQL. No cambiar el directorio ni el nombre del proyecto Compose, que identifican ese volumen. No usar --volumes, prune ni borrar output/tls.
+Conservar TLS_PUBLIC_IP (la IP publica de EC2), TLS_PUBLIC_DNS si se utilizo, TLS_STORE_PASSWORD y AUTH_SERVER_PORT con los mismos valores del despliegue. El cambio de IPAM requiere recrear la red. Hay una interrupcion temporal del stack; el comando down SIN -v conserva el volumen de PostgreSQL, pero no garantiza conservar el historial de Kafka. No cambiar el directorio ni el nombre del proyecto Compose, que identifican ese volumen. No usar --volumes, prune ni borrar output/tls.
 
 ```bash
 export COMPOSE_FILE=docker-compose.yml:docker-compose.secure.yml:docker-compose.scale.yml
@@ -222,28 +249,18 @@ docker inspect $(docker compose ps -q ms-account ms-payment ms-customer) \
 
 Verificar seis contenedores con IP distintas dentro del pool 172.30.90.0-63 y dos registros UP por microservicio en Eureka. No avanzar si hay IP fuera del pool. Esperar arranque y propagacion; una importacion inicial opcional del Config Server puede requerir reiniciar el Gateway una vez que Config Server este disponible.
 
-Reimportar output/tls/bank.crt como certificado de confianza en Postman y reemplazar el certificado anterior. Mantener SSL certificate verification activado. No es necesario reconstruir las imagenes Java para este cambio.
-
-Las IP internas pueden cambiar al recrear contenedores, pero siguen cubiertas mientras pertenezcan al pool configurado. TLS_SCALE_NETWORK=true agrega sus 64 direcciones al SAN. No hace falta regenerar por cada reinicio ni al reducir a una replica. El script conserva un respaldo en output/tls/backup.* y, sin TLS_REGENERATE=true, rechaza direcciones solicitadas no cubiertas. TLS_EXTRA_IPS sigue disponible para IPv4 adicionales separadas por comas. Este certificado compartido y el pool acotado son para laboratorio, no una gestion de identidades de produccion. No publicar claves ni certificados privados.
+Reimportar output/tls/bank.crt en Postman y mantener SSL certificate verification activado. No hace falta regenerar por cada reinicio ni al reducir replicas mientras las IP permanezcan en el pool. El certificado compartido es solo de laboratorio; no publicar claves privadas.
 
 Realizar la regresion breve de Postman: 01 UP; 02 y 04 tokens nuevos; 03 y 05 rechazos 401/403; 06 y 24 datos reales sin fallback; 19 y 23 listados por Gateway. Luego ejecutar la carpeta 28 completa. No repetir operaciones de escritura ni todos los bloques funcionales por este cambio de infraestructura.
 
-Esperar dos instancias UP de cada servicio en Eureka y propagacion al Gateway. Si el token expiro, obtener uno nuevo. Realizar lecturas de baja frecuencia para comprobar distribucion, no una prueba de carga:
+![Eureka muestra dos instancias UP de ms-account, ms-payment y ms-customer](../evidencias/pruebas/38-eureka-ui.png)
 
-```bash
-for ruta in cuentas payments customers; do
-  for intento in 1 2 3 4 5 6; do
-    curl --fail --silent --show-error --cacert output/tls/bank.crt \
-      -D - -o /dev/null -H "Authorization: Bearer $TOKEN" \
-      "https://localhost:8084/gateway/$ruta" | grep -i '^X-Service-Instance:'
-    sleep 1
-  done
-done
-```
+Esperar propagacion al Gateway y ejecutar carpeta 28 con token 02 vigente, enableScalingChecks=true y expectedInstances=2. Usar Runner: una iteracion y 1000 ms de intervalo. La corrida validada uso scalingSamples=12 y observo dos IDs por servicio, con todos los tests Passed; seis es el valor predeterminado. Ver [resultado Postman](../evidencias/pruebas/34-runner-escalabilidad.png).
 
-Resultado esperado: al menos dos valores distintos de X-Service-Instance para cada microservicio. Conservar tambien el listado Eureka y Compose. Mientras esta activo el override, 8091/8092/8093 no estan publicados: usar Gateway; no correr las requests directas de la coleccion en ese modo.
+En modo escalado usar Gateway: 8091/8092/8093 no estan publicados. La carpeta no crea replicas ni mide carga. Desactivar enableScalingChecks al terminar.
 
-La carpeta Postman `28 - Escalabilidad por Gateway (opcional)` realiza esta comprobacion con seis muestras por servicio. Obtener primero el token 02, activar `enableScalingChecks=true`, dejar `expectedInstances=2` y ejecutar solo la carpeta 28 en Runner. Al volver a una replica, desactivar el flag o ajustar expectedInstances a 1. La carpeta no crea ni elimina replicas.
+<details>
+<summary>Volver a una replica o retirar el override de escalabilidad</summary>
 
 Volver a una replica manteniendo el override y el pool cubierto por TLS:
 
@@ -262,13 +279,11 @@ docker compose up -d --remove-orphans
 
 Esperar convergencia de Eureka. No ejecutar docker compose down -v durante las transiciones. Comprobar nuevamente saldo y listado de pagos/clientes.
 
-## 8. Evidencia, limites y cierre
+</details>
 
-Registrar commit del ZIP, recursos EC2, fecha, servicios UP, resultados Postman, saldos/operaciones, tres jobs y sus particiones, rechazos/CSV y dos IDs de instancia por cada microservicio. No incluir secretos o tokens en evidencia.
+## 8. Cierre
 
-Se estimara rendimiento con supuestos explicitos, sin pruebas de gran volumen ni una comparacion medida contra COBOL. La recuperacion abrupta y de PostgreSQL ya tiene pruebas locales aisladas; si se repiten en EC2 usar la base temporal de las instrucciones, nunca detener la base principal por accidente.
-
-El despliegue quedara validado solo despues de ejecutar este procedimiento. No aprobar automaticamente el PR ni hacer merge a develop antes de revisar los resultados.
+La validacion no demuestra rendimiento bajo carga, equivalencia ejecutada contra COBOL ni alta disponibilidad entre hosts.
 
 Para detener los contenedores conservando PostgreSQL:
 
