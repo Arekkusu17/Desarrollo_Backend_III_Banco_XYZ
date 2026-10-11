@@ -40,10 +40,22 @@ spring:
             - id: ms-payment
               uri: lb://ms-payment
               predicates:
+                - Path=/gateway/payments
+              filters:
+                - SetPath=/api/payments
+            - id: ms-payment-nested
+              uri: lb://ms-payment
+              predicates:
                 - Path=/gateway/payments/**
               filters:
                 - RewritePath=/gateway/payments/(?<segment>.*), /api/payments/$\{segment}
             - id: ms-customer
+              uri: lb://ms-customer
+              predicates:
+                - Path=/gateway/customers
+              filters:
+                - SetPath=/api/customers
+            - id: ms-customer-nested
               uri: lb://ms-customer
               predicates:
                 - Path=/gateway/customers/**
