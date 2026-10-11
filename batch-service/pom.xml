@@ -12,9 +12,9 @@
     </parent>
 
     <groupId>cl.duoc.backendiii</groupId>
-    <artifactId>banco-xyz-batch</artifactId>
+    <artifactId>batch-service</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>banco-xyz-batch</name>
+    <name>batch-service</name>
     <description>Migracion de procesos batch legacy del Banco XYZ con Spring Batch.</description>
 
     <properties>

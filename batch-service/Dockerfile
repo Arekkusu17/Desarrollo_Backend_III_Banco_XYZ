@@ -9,20 +9,20 @@ COPY shared-events/pom.xml shared-events/pom.xml
 COPY ms-account/pom.xml ms-account/pom.xml
 COPY ms-payment/pom.xml ms-payment/pom.xml
 COPY ms-customer/pom.xml ms-customer/pom.xml
-COPY core-banking/pom.xml core-banking/pom.xml
+COPY batch-service/pom.xml batch-service/pom.xml
 COPY bff-common/pom.xml bff-common/pom.xml
 COPY bff-web/pom.xml bff-web/pom.xml
 COPY bff-mobile/pom.xml bff-mobile/pom.xml
 COPY bff-atm/pom.xml bff-atm/pom.xml
 COPY risk-service/pom.xml risk-service/pom.xml
 COPY notification-service/pom.xml notification-service/pom.xml
-RUN mvn -q -pl core-banking -am -DskipTests dependency:go-offline
+RUN mvn -q -pl batch-service -am -DskipTests dependency:go-offline
 COPY shared-events/src shared-events/src
-COPY core-banking/src core-banking/src
-RUN mvn -q -pl core-banking -am -DskipTests package
+COPY batch-service/src batch-service/src
+RUN mvn -q -pl batch-service -am -DskipTests package
 
 FROM eclipse-temurin:21-jre
 WORKDIR /app
-COPY --from=build /app/core-banking/target/*.jar app.jar
+COPY --from=build /app/batch-service/target/*.jar app.jar
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]

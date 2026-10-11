@@ -9,7 +9,7 @@ server:
 
 core:
   banking:
-    url: ${CORE_BANKING_URL:http://core-banking}
+    url: ${CORE_BANKING_URL:http://batch-service}
 
 channel:
   name: Mobile

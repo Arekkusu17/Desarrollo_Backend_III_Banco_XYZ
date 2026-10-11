@@ -20,7 +20,7 @@
         <module>ms-account</module>
         <module>ms-payment</module>
         <module>ms-customer</module>
-        <module>core-banking</module>
+        <module>batch-service</module>
         <module>bff-common</module>
         <module>bff-web</module>
         <module>bff-mobile</module>
