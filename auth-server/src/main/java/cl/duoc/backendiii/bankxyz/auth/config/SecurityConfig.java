@@ -65,19 +65,27 @@ public class SecurityConfig {
                 .scope("atm.read")
                 .scope("atm.write")
                 .scope("risk.read")
+                .scope("account.read")
+                .scope("payment.read")
+                .scope("payment.write")
+                .scope("customer.read")
+                .scope("customer.write")
                 .build();
 
         RegisteredClient bffWeb = client("bff-web", bffWebSecret, tokenSettings)
                 .scope("core.read")
+                .scope("account.read")
                 .build();
 
         RegisteredClient bffMobile = client("bff-mobile", bffMobileSecret, tokenSettings)
                 .scope("core.read")
+                .scope("account.read")
                 .build();
 
         RegisteredClient bffAtm = client("bff-atm", bffAtmSecret, tokenSettings)
                 .scope("core.read")
                 .scope("core.write")
+                .scope("account.read")
                 .build();
 
         return new InMemoryRegisteredClientRepository(demoClient, bffWeb, bffMobile, bffAtm);

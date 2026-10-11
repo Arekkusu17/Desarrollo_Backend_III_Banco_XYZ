@@ -9,7 +9,7 @@ server:
 
 core:
   banking:
-    url: ${CORE_BANKING_URL:http://core-banking}
+    url: ${ACCOUNT_SERVICE_URL:http://ms-account}
 
 spring:
   kafka:
@@ -37,7 +37,7 @@ app:
     token-url: ${OAUTH_TOKEN_URL:http://auth-server:9000/oauth2/token}
     client-id: ${OAUTH_CLIENT_ID:bff-atm}
     client-secret: ${OAUTH_CLIENT_SECRET:bff-atm-secret}
-    core-scope: core.read
+    core-scope: account.read
 
 spring:
   security:

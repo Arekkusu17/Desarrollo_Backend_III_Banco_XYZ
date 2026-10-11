@@ -74,11 +74,11 @@ services:
       - config-server
       - discovery-server
 
-  core-banking:
+  batch-service:
     build:
       context: .
-      dockerfile: core-banking/Dockerfile
-    container_name: banco-xyz-core-banking
+      dockerfile: batch-service/Dockerfile
+    container_name: banco-xyz-batch-service
     environment:
       CONFIG_SERVER_URL: http://config-server:8888
       EUREKA_URL: http://discovery-server:8761/eureka/
@@ -101,6 +101,78 @@ services:
       auth-server:
         condition: service_started
 
+  ms-account:
+    build:
+      context: .
+      dockerfile: ms-account/Dockerfile
+    container_name: banco-xyz-ms-account
+    environment:
+      CONFIG_SERVER_URL: http://config-server:8888
+      EUREKA_URL: http://discovery-server:8761/eureka/
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/banco_xyz
+      SPRING_DATASOURCE_USERNAME: banco
+      SPRING_DATASOURCE_PASSWORD: banco
+      OAUTH_ISSUER_URI: http://auth-server:9000
+    ports:
+      - "8091:8091"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      config-server:
+        condition: service_started
+      discovery-server:
+        condition: service_started
+      auth-server:
+        condition: service_started
+
+  ms-payment:
+    build:
+      context: .
+      dockerfile: ms-payment/Dockerfile
+    container_name: banco-xyz-ms-payment
+    environment:
+      CONFIG_SERVER_URL: http://config-server:8888
+      EUREKA_URL: http://discovery-server:8761/eureka/
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/banco_xyz
+      SPRING_DATASOURCE_USERNAME: banco
+      SPRING_DATASOURCE_PASSWORD: banco
+      OAUTH_ISSUER_URI: http://auth-server:9000
+    ports:
+      - "8092:8092"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      config-server:
+        condition: service_started
+      discovery-server:
+        condition: service_started
+      auth-server:
+        condition: service_started
+
+  ms-customer:
+    build:
+      context: .
+      dockerfile: ms-customer/Dockerfile
+    container_name: banco-xyz-ms-customer
+    environment:
+      CONFIG_SERVER_URL: http://config-server:8888
+      EUREKA_URL: http://discovery-server:8761/eureka/
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/banco_xyz
+      SPRING_DATASOURCE_USERNAME: banco
+      SPRING_DATASOURCE_PASSWORD: banco
+      OAUTH_ISSUER_URI: http://auth-server:9000
+    ports:
+      - "8093:8093"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      config-server:
+        condition: service_started
+      discovery-server:
+        condition: service_started
+      auth-server:
+        condition: service_started
+
   bff-web:
     build:
       context: .
@@ -109,7 +181,7 @@ services:
     environment:
       CONFIG_SERVER_URL: http://config-server:8888
       EUREKA_URL: http://discovery-server:8761/eureka/
-      CORE_BANKING_URL: http://core-banking
+      ACCOUNT_SERVICE_URL: http://ms-account
       BFF_SSL_ENABLED: "false"
       OAUTH_ISSUER_URI: http://auth-server:9000
       OAUTH_TOKEN_URL: http://auth-server:9000/oauth2/token
@@ -118,7 +190,7 @@ services:
     ports:
       - "8081:8081"
     depends_on:
-      - core-banking
+      - ms-account
       - discovery-server
       - auth-server
 
@@ -130,7 +202,7 @@ services:
     environment:
       CONFIG_SERVER_URL: http://config-server:8888
       EUREKA_URL: http://discovery-server:8761/eureka/
-      CORE_BANKING_URL: http://core-banking
+      ACCOUNT_SERVICE_URL: http://ms-account
       BFF_SSL_ENABLED: "false"
       OAUTH_ISSUER_URI: http://auth-server:9000
       OAUTH_TOKEN_URL: http://auth-server:9000/oauth2/token
@@ -139,7 +211,7 @@ services:
     ports:
       - "8082:8082"
     depends_on:
-      - core-banking
+      - ms-account
       - discovery-server
       - auth-server
 
@@ -151,7 +223,7 @@ services:
     environment:
       CONFIG_SERVER_URL: http://config-server:8888
       EUREKA_URL: http://discovery-server:8761/eureka/
-      CORE_BANKING_URL: http://core-banking
+      ACCOUNT_SERVICE_URL: http://ms-account
       BFF_SSL_ENABLED: "false"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       OAUTH_ISSUER_URI: http://auth-server:9000
@@ -162,7 +234,8 @@ services:
       - "8083:8083"
     depends_on:
       - kafka
-      - core-banking
+      - batch-service
+      - ms-account
       - discovery-server
       - auth-server
 
@@ -219,6 +292,8 @@ services:
       - bff-web
       - bff-mobile
       - bff-atm
+      - ms-payment
+      - ms-customer
       - risk-service
       - notification-service
 
