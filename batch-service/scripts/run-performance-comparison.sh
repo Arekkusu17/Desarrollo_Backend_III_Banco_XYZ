@@ -20,7 +20,7 @@ run_scenario() {
   local duration
 
   start=$(date +%s)
-  "${REPO_ROOT}/mvnw" -q -pl core-banking spring-boot:run \
+  "${REPO_ROOT}/mvnw" -q -pl batch-service spring-boot:run \
     -Dspring-boot.run.arguments="--batch.chunk-size=${chunk_size} --batch.thread-pool-size=${thread_pool_size} --batch.partition-grid-size=${partition_grid_size}"
   end=$(date +%s)
   duration=$((end - start))

@@ -2,7 +2,7 @@
 
 Servicio para cajeros automaticos.
 
-Consume `core-banking` y expone operaciones acotadas como consulta de saldo y retiros.
+Consume `batch-service` y expone operaciones acotadas como consulta de saldo y retiros.
 
 ## Endpoints
 

@@ -9,7 +9,7 @@ COPY shared-events/pom.xml shared-events/pom.xml
 COPY ms-account/pom.xml ms-account/pom.xml
 COPY ms-payment/pom.xml ms-payment/pom.xml
 COPY ms-customer/pom.xml ms-customer/pom.xml
-COPY core-banking/pom.xml core-banking/pom.xml
+COPY batch-service/pom.xml batch-service/pom.xml
 COPY bff-common/pom.xml bff-common/pom.xml
 COPY bff-web/pom.xml bff-web/pom.xml
 COPY bff-mobile/pom.xml bff-mobile/pom.xml

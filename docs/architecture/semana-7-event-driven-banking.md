@@ -8,7 +8,7 @@ flowchart LR
     Gateway --> ATM[bff-atm 8083]
 
     ATM -- withdrawal.requested --> K1[(Kafka)]
-    K1 --> Core[core-banking 8080]
+    K1 --> Core[batch-service 8080]
     Core -- funds.reserved --> K2[(Kafka)]
     Core -- funds.rejected --> K3[(Kafka)]
 
@@ -38,22 +38,22 @@ flowchart LR
 ## Flujo exitoso
 
 1. `bff-atm` valida formato del monto y PIN, crea `transactionId` y publica `withdrawal.requested`.
-2. `core-banking` valida cuenta y saldo disponible, reserva fondos en memoria y publica `funds.reserved`.
+2. `batch-service` valida cuenta y saldo disponible, reserva fondos en memoria y publica `funds.reserved`.
 3. `risk-service` evalua la operacion con Circuit Breaker y publica `risk.approved`.
 4. `bff-atm` marca la transaccion como `CONFIRMED` y publica `withdrawal.confirmed`.
 5. `notification-service` consume el evento final y registra la notificacion.
 
 ## Flujo rechazado por fondos
 
-1. `core-banking` recibe `withdrawal.requested`.
+1. `batch-service` recibe `withdrawal.requested`.
 2. Si la cuenta no existe, el monto es invalido o el saldo no alcanza, publica `funds.rejected`.
 3. `bff-atm` marca la transaccion como rechazada y publica `withdrawal.cancelled`.
 4. `notification-service` registra la cancelacion.
 
 ## Flujo con compensacion
 
-1. `core-banking` reserva fondos y publica `funds.reserved`.
+1. `batch-service` reserva fondos y publica `funds.reserved`.
 2. `risk-service` rechaza o ejecuta fallback de Resilience4j y publica `risk.rejected`.
 3. `bff-atm` publica `funds.release-requested` y `withdrawal.cancelled`.
-4. `core-banking` libera la reserva y publica `funds.released`.
+4. `batch-service` libera la reserva y publica `funds.released`.
 5. `notification-service` registra la cancelacion y la liberacion de fondos.

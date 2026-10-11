@@ -1,4 +1,4 @@
-# Core Banking Banco XYZ
+# Batch Service Banco XYZ
 
 Backend central del proyecto Banco XYZ. Este servicio mantiene la solucion batch de Semana 3 y agrega una API REST para que los BFF de Semana 5 consuman datos procesados.
 
@@ -29,7 +29,7 @@ La tolerancia a fallos se concentra en `BankRecordSkipPolicy`, `BankSkipListener
 
 ## Configuracion
 
-La mayor parte del comportamiento se puede ajustar en `core-banking/src/main/resources/application.properties` sin recompilar:
+La mayor parte del comportamiento se puede ajustar en `batch-service/src/main/resources/application.properties` sin recompilar:
 
 ```properties
 legacy.data.week=semana_3
@@ -78,7 +78,7 @@ Levantar PostgreSQL y ejecutar:
 
 ```bash
 docker compose up -d
-./mvnw -pl core-banking spring-boot:run
+./mvnw -pl batch-service spring-boot:run
 ```
 
 Al iniciar, la aplicacion ejecuta los procesos batch y deja disponible la API REST del core bancario en `http://localhost:8080`.
@@ -86,7 +86,7 @@ Al iniciar, la aplicacion ejecuta los procesos batch y deja disponible la API RE
 Para procesar otra semana:
 
 ```bash
-./mvnw -pl core-banking spring-boot:run -Dspring-boot.run.arguments="--legacy.data.week=semana_1"
+./mvnw -pl batch-service spring-boot:run -Dspring-boot.run.arguments="--legacy.data.week=semana_1"
 ```
 
 ## Validaciones
@@ -107,7 +107,7 @@ Los rechazos se almacenan en `rejected_records` con proceso, clave, motivo y pay
 Ejecutar pruebas automatizadas:
 
 ```bash
-./mvnw -pl core-banking test
+./mvnw -pl batch-service test
 ```
 
 Consultar la API REST del core bancario:
@@ -159,15 +159,15 @@ annualStatementsWorkerStep:annualPartition2
 La configuracion de escalamiento se puede comparar sin cambiar codigo, usando argumentos de Spring Boot:
 
 ```bash
-./mvnw -pl core-banking spring-boot:run -Dspring-boot.run.arguments="--batch.chunk-size=5 --batch.thread-pool-size=3 --batch.partition-grid-size=3"
-./mvnw -pl core-banking spring-boot:run -Dspring-boot.run.arguments="--batch.chunk-size=3 --batch.thread-pool-size=3 --batch.partition-grid-size=3"
-./mvnw -pl core-banking spring-boot:run -Dspring-boot.run.arguments="--batch.chunk-size=10 --batch.thread-pool-size=4 --batch.partition-grid-size=4"
+./mvnw -pl batch-service spring-boot:run -Dspring-boot.run.arguments="--batch.chunk-size=5 --batch.thread-pool-size=3 --batch.partition-grid-size=3"
+./mvnw -pl batch-service spring-boot:run -Dspring-boot.run.arguments="--batch.chunk-size=3 --batch.thread-pool-size=3 --batch.partition-grid-size=3"
+./mvnw -pl batch-service spring-boot:run -Dspring-boot.run.arguments="--batch.chunk-size=10 --batch.thread-pool-size=4 --batch.partition-grid-size=4"
 ```
 
 Tambien se incluye un script para registrar la comparacion en CSV:
 
 ```bash
-./core-banking/scripts/run-performance-comparison.sh
+./batch-service/scripts/run-performance-comparison.sh
 ```
 
 El resultado queda en `output/performance-comparison.csv` con escenario, parametros usados y duracion total. La configuracion recomendada para la entrega es `chunk-size=5`, `thread-pool-size=3` y `partition-grid-size=3`, porque mantiene paralelismo visible sin sobrecargar la base local.
@@ -211,7 +211,7 @@ El reporte anual se genera en `output/annual_statement_report.csv`.
 ## Estructura
 
 ```text
-core-banking/src/main/java/cl/duoc/backendiii/bankbatch
+batch-service/src/main/java/cl/duoc/backendiii/bankbatch
 |-- config       Jobs, Steps, runner y resumen de ejecucion
 |-- controller   Endpoints REST del core bancario
 |-- domain       Modelos de entrada y salida

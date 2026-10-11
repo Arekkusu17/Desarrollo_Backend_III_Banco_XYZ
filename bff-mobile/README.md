@@ -2,7 +2,7 @@
 
 Servicio para entregar un contrato liviano para app movil.
 
-Consume `core-banking` y expone endpoints reducidos, pensados para velocidad y bajo consumo de datos.
+Consume `batch-service` y expone endpoints reducidos, pensados para velocidad y bajo consumo de datos.
 
 ## Endpoint
 

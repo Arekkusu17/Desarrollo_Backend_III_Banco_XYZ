@@ -30,7 +30,7 @@ API Gateway :8084
        +--> BFF ATM :8083
                 |
                 v
-          Core Banking :8080
+          Batch Service :8080
                 |
                 v
            PostgreSQL :5432
@@ -52,7 +52,7 @@ Notification :8085      notificacion y auditoria de eventos
 | `bff-web` | Canal Web para dashboard de cuenta. |
 | `bff-mobile` | Canal Mobile para vista liviana de cuenta. |
 | `bff-atm` | Canal ATM para saldo, retiro y seguimiento de transacciones. |
-| `core-banking` | Backend central, API bancaria, batch legacy, PostgreSQL y reserva/liberacion de fondos. |
+| `batch-service` | Backend central, API bancaria, batch legacy, PostgreSQL y reserva/liberacion de fondos. |
 | `risk-service` | Evaluacion de riesgo de retiros y fallback con Resilience4j. |
 | `notification-service` | Consumidor de eventos finales y auditoria. |
 | `shared-events` | Contratos compartidos para eventos Kafka. |
@@ -110,7 +110,7 @@ docker compose down -v
 | BFF Web | `http://localhost:8081` |
 | BFF Mobile | `http://localhost:8082` |
 | BFF ATM | `http://localhost:8083` |
-| Core Banking | `http://localhost:8080` |
+| Batch Service | `http://localhost:8080` |
 | Risk Service | `http://localhost:8090` |
 | Notification Service | `http://localhost:8085` |
 | Config Server | `http://localhost:8888` |
@@ -120,7 +120,7 @@ docker compose down -v
 
 ## Seguridad OAuth2
 
-`auth-server` emite JWT mediante `client_credentials`. Gateway, BFFs, Core Banking y Risk Service validan bearer tokens.
+`auth-server` emite JWT mediante `client_credentials`. Gateway, BFFs, Batch Service y Risk Service validan bearer tokens.
 
 | Cliente | Secreto | Scopes |
 | --- | --- | --- |
@@ -136,7 +136,7 @@ Rutas principales protegidas:
 | `api-gateway` | `/gateway/web/**` | `web.read` |
 | `api-gateway` | `/gateway/mobile/**` | `mobile.read` |
 | `api-gateway` | `/gateway/atm/**` | `atm.read` o `atm.write` |
-| `core-banking` | `/api/**` | `core.read` o `core.write` |
+| `batch-service` | `/api/**` | `core.read` o `core.write` |
 | `risk-service` | `/api/risk/admin/**` | `risk.read` |
 
 Obtener token de laboratorio:
@@ -171,7 +171,7 @@ El retiro ATM se procesa como saga coreografiada con Kafka.
 ```text
 bff-atm
   -> withdrawal.requested
-core-banking
+batch-service
   -> funds.reserved
 risk-service
   -> risk.approved / risk.rejected
@@ -181,7 +181,7 @@ notification-service
   -> notificacion y auditoria
 ```
 
-Si el riesgo rechaza una transaccion o se activa el fallback de Resilience4j, `bff-atm` publica `funds.release-requested` y `core-banking` responde con `funds.released`.
+Si el riesgo rechaza una transaccion o se activa el fallback de Resilience4j, `bff-atm` publica `funds.release-requested` y `batch-service` responde con `funds.released`.
 
 ## Pruebas
 
