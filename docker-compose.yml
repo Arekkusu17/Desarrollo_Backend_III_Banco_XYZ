@@ -181,7 +181,7 @@ services:
     environment:
       CONFIG_SERVER_URL: http://config-server:8888
       EUREKA_URL: http://discovery-server:8761/eureka/
-      CORE_BANKING_URL: http://batch-service
+      ACCOUNT_SERVICE_URL: http://ms-account
       BFF_SSL_ENABLED: "false"
       OAUTH_ISSUER_URI: http://auth-server:9000
       OAUTH_TOKEN_URL: http://auth-server:9000/oauth2/token
@@ -190,10 +190,7 @@ services:
     ports:
       - "8081:8081"
     depends_on:
-      - batch-service
       - ms-account
-      - ms-payment
-      - ms-customer
       - discovery-server
       - auth-server
 
@@ -205,7 +202,7 @@ services:
     environment:
       CONFIG_SERVER_URL: http://config-server:8888
       EUREKA_URL: http://discovery-server:8761/eureka/
-      CORE_BANKING_URL: http://batch-service
+      ACCOUNT_SERVICE_URL: http://ms-account
       BFF_SSL_ENABLED: "false"
       OAUTH_ISSUER_URI: http://auth-server:9000
       OAUTH_TOKEN_URL: http://auth-server:9000/oauth2/token
@@ -214,10 +211,7 @@ services:
     ports:
       - "8082:8082"
     depends_on:
-      - batch-service
       - ms-account
-      - ms-payment
-      - ms-customer
       - discovery-server
       - auth-server
 
@@ -229,7 +223,7 @@ services:
     environment:
       CONFIG_SERVER_URL: http://config-server:8888
       EUREKA_URL: http://discovery-server:8761/eureka/
-      CORE_BANKING_URL: http://batch-service
+      ACCOUNT_SERVICE_URL: http://ms-account
       BFF_SSL_ENABLED: "false"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       OAUTH_ISSUER_URI: http://auth-server:9000
@@ -242,8 +236,6 @@ services:
       - kafka
       - batch-service
       - ms-account
-      - ms-payment
-      - ms-customer
       - discovery-server
       - auth-server
 

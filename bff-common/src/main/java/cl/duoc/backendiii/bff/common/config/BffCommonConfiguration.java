@@ -124,7 +124,7 @@ public class BffCommonConfiguration {
                     .body(TokenResponse.class);
 
             if (token == null || token.accessToken() == null) {
-                throw new IllegalStateException("No fue posible obtener token OAuth2 para core-banking");
+                throw new IllegalStateException("No fue posible obtener token OAuth2 para el servicio de cuentas");
             }
             return token.accessToken();
         }
