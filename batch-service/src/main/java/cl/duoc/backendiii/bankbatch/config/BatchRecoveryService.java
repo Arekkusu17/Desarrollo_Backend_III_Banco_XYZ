@@ -23,16 +23,18 @@ public class BatchRecoveryService {
     private final JobParameters parameters;
     private final int maxAttempts;
     private final long delay;
+    private final BatchExecutionLock locks;
 
     public BatchRecoveryService(List<Job> jobs, JobLauncher launcher, JobRepository repository,
             JobExplorer explorer, @Value("${legacy.data.week}") String dataWeek,
             @Value("${batch.run-key:}") String runKey,
             @Value("${batch.recovery.max-attempts:3}") int maxAttempts,
-            @Value("${batch.recovery.delay-ms:1000}") long delay) {
+            @Value("${batch.recovery.delay-ms:1000}") long delay, BatchExecutionLock locks) {
         this.jobs = jobs;
         this.launcher = launcher;
         this.repository = repository;
         this.explorer = explorer;
+        this.locks = locks;
         this.maxAttempts = Math.max(1, maxAttempts);
         this.delay = Math.max(0, Math.min(delay, 30000));
         parameters = new JobParametersBuilder().addString("data.week", dataWeek)
@@ -53,8 +55,16 @@ public class BatchRecoveryService {
     }
 
     private void run(Job job) throws Exception {
+        try (var lease = locks.acquire(job.getName(), parameters)) {
+            if (lease == null) return;
+            runOwned(job);
+        }
+    }
+
+    private void runOwned(Job job) throws Exception {
         JobExecution previous = repository.getLastJobExecution(job.getName(), parameters);
-        if (previous != null && (previous.getStatus() == BatchStatus.COMPLETED || previous.isRunning())) return;
+        if (previous != null && previous.getStatus() == BatchStatus.COMPLETED) return;
+        if (previous != null) recoverInterrupted(previous);
         int attempts = previous == null ? 0 : explorer.getJobExecutions(previous.getJobInstance()).size();
         while (attempts < maxAttempts) {
             JobExecution execution = launcher.run(job, parameters);
@@ -68,6 +78,25 @@ public class BatchRecoveryService {
             }
         }
         log.error("Job {} agoto {} intentos; requiere revision", job.getName(), maxAttempts);
+    }
+
+    private void recoverInterrupted(JobExecution previous) {
+        JobExecution execution = explorer.getJobExecution(previous.getId());
+        for (StepExecution step : execution.getStepExecutions()) {
+            if (step.getStatus().isRunning() || step.getStatus() == BatchStatus.UNKNOWN) {
+                step.setStatus(BatchStatus.FAILED);
+                step.setExitStatus(ExitStatus.FAILED.addExitDescription("Ejecucion interrumpida; checkpoint conservado"));
+                step.setEndTime(java.time.LocalDateTime.now());
+                repository.update(step);
+            }
+        }
+        if (execution.isRunning() || execution.getStatus() == BatchStatus.UNKNOWN) {
+            execution.setStatus(BatchStatus.FAILED);
+            execution.setExitStatus(ExitStatus.FAILED.addExitDescription("Recuperacion de ejecucion sin propietario activo"));
+            execution.setEndTime(java.time.LocalDateTime.now());
+            repository.update(execution);
+            log.warn("Recuperada ejecucion interrumpida {} id={}", execution.getJobInstance().getJobName(), execution.getId());
+        }
     }
 
     public boolean completed() {

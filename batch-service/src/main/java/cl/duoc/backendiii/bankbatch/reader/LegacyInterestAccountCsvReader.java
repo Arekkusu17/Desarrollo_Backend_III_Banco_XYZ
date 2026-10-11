@@ -12,6 +12,10 @@ public class LegacyInterestAccountCsvReader extends AbstractLegacyCsvReader<Lega
         super(resourcePath, 5);
     }
 
+    public LegacyInterestAccountCsvReader(String resourcePath, int start, Integer end) throws IOException {
+        super(resourcePath, 5, start, end);
+    }
+
     @Override
     protected LegacyInterestAccount map(String[] fields) {
         return new LegacyInterestAccount(fields[0], fields[1], fields[2], fields[3], fields[4]);
