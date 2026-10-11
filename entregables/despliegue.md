@@ -179,7 +179,7 @@ TOKEN=$(curl --fail --silent --show-error --cacert output/tls/bank.crt \
   --data-urlencode 'scope=web.read mobile.read atm.read atm.write risk.read account.read account.write payment.read payment.write customer.read customer.write' \
   https://localhost:9001/oauth2/token | jq -er '.access_token')
 curl --fail --cacert output/tls/bank.crt \
-  -H "Authorization: Bearer $TOKEN" https://localhost:8084/gateway/cuentas/101/saldo
+  -H "Authorization: Bearer $TOKEN" https://localhost:8084/gateway/cuentas/119/saldo
 ```
 
 Confirmar los tres jobs COMPLETED, sus particiones, rechazos y reporte anual con los comandos SQL/docker cp de las instrucciones. No ejecutar pruebas de carga ni atribuir estos resultados a COBOL.
