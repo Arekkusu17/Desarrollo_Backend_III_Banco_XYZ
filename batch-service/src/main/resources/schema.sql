@@ -37,3 +37,6 @@ CREATE TABLE IF NOT EXISTS rejected_records (
     payload TEXT NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+ALTER TABLE rejected_records ADD COLUMN IF NOT EXISTS fingerprint VARCHAR(64);
+CREATE UNIQUE INDEX IF NOT EXISTS rejected_record_fingerprint ON rejected_records(fingerprint);

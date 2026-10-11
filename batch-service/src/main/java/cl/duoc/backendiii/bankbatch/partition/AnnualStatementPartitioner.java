@@ -54,14 +54,10 @@ public class AnnualStatementPartitioner implements Partitioner {
         ClassPathResource resource = new ClassPathResource("input/" + dataWeek + "/cuentas_anuales.csv");
         int count = 0;
 
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(resource.getInputStream(), StandardCharsets.UTF_8))) {
-            String line;
-            boolean header = true;
-            while ((line = reader.readLine()) != null) {
-                if (header) {
-                    header = false;
-                    continue;
-                }
+        try (var reader = new InputStreamReader(resource.getInputStream(), StandardCharsets.UTF_8);
+             var parser = org.apache.commons.csv.CSVFormat.DEFAULT.builder()
+                     .setHeader().setSkipHeaderRecord(true).get().parse(reader)) {
+            for (var record : parser) {
                 count++;
             }
         } catch (IOException ex) {

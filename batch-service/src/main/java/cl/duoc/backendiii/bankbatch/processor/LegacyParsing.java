@@ -6,7 +6,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 // This class provides utility methods for parsing and validating legacy transaction data.
-final class LegacyParsing {
+public final class LegacyParsing {
 
     private static final List<DateTimeFormatter> ACCEPTED_DATE_FORMATS = List.of(
             DateTimeFormatter.ISO_LOCAL_DATE,
@@ -17,7 +17,7 @@ final class LegacyParsing {
     private LegacyParsing() {
     }
 
-    static LocalDate parseDate(String value) {
+    public static LocalDate parseDate(String value) {
         String cleanValue = requireText(value, "fecha vacia");
         for (DateTimeFormatter formatter : ACCEPTED_DATE_FORMATS) {
             try {
@@ -29,19 +29,19 @@ final class LegacyParsing {
         throw new IllegalArgumentException("fecha invalida: " + cleanValue);
     }
 
-    static long parseLong(String value, String errorMessage) {
+    public static long parseLong(String value, String errorMessage) {
         return Long.parseLong(requireText(value, errorMessage));
     }
 
-    static int parseInt(String value, String errorMessage) {
+    public static int parseInt(String value, String errorMessage) {
         return Integer.parseInt(requireText(value, errorMessage));
     }
 
-    static BigDecimal parseMoney(String value, String errorMessage) {
+    public static BigDecimal parseMoney(String value, String errorMessage) {
         return new BigDecimal(requireText(value, errorMessage));
     }
 
-    static String requireText(String value, String errorMessage) {
+    public static String requireText(String value, String errorMessage) {
         if (value == null || value.trim().isEmpty()) {
             throw new IllegalArgumentException(errorMessage);
         }

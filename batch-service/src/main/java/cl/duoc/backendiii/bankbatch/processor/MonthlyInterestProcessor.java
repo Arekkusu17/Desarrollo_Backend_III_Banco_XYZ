@@ -47,7 +47,8 @@ public class MonthlyInterestProcessor implements ItemProcessor<LegacyInterestAcc
             int age = LegacyParsing.parseInt(item.age(), "edad vacia");
             String accountType = LegacyParsing.requireText(item.accountType(), "tipo vacio").toLowerCase();
 
-            if (!processedAccounts.add(accountId)) {
+            if (Boolean.TRUE.equals(item.sourceDuplicate())
+                    || item.sourceDuplicate() == null && !processedAccounts.add(accountId)) {
                 reject(item.accountId(), "cuenta duplicada", item);
                 return null;
             }
