@@ -3,50 +3,34 @@ package cl.duoc.backendiii.bankbatch.writer;
 import cl.duoc.backendiii.bankbatch.domain.AnnualStatementEntry;
 import org.springframework.batch.item.Chunk;
 import org.springframework.batch.item.ItemWriter;
+import org.springframework.batch.core.*;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
-
+import org.apache.commons.csv.CSVFormat;
+import org.apache.commons.csv.CSVPrinter;
 import java.io.IOException;
-import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.nio.file.*;
 
 @Component
-// This writer is responsible for writing AnnualStatementEntry objects to both a CSV report and a database table.
-public class AnnualStatementReportWriter implements ItemWriter<AnnualStatementEntry> {
+public class AnnualStatementReportWriter implements ItemWriter<AnnualStatementEntry>, JobExecutionListener {
+    private final JdbcTemplate jdbc;
+    private final Path report;
 
-    private final JdbcTemplate jdbcTemplate;
-    private final Path reportPath;
-    private final AtomicBoolean initialized = new AtomicBoolean(false);
-    // The annual Step runs with a TaskExecutor, so multiple worker threads can call this writer at the same time.
-    // PostgreSQL writes are handled safely by JdbcTemplate and the database transaction, but appending to a plain CSV
-    // file is not atomic at the chunk level. This lock serializes only the file initialization and append operations,
-    // preventing interleaved lines or a header being written while another thread is appending data.
-    private final Object reportLock = new Object();
-
-    public AnnualStatementReportWriter(JdbcTemplate jdbcTemplate,
-                                       @Value("${bank.annual.report-output}") String reportOutput) {
-        this.jdbcTemplate = jdbcTemplate;
-        this.reportPath = Path.of(reportOutput);
+    public AnnualStatementReportWriter(JdbcTemplate jdbc, @Value("${bank.annual.report-output}") String output) {
+        this.jdbc = jdbc;
+        report = Path.of(output).toAbsolutePath();
     }
 
     @Override
-    // The write method takes a chunk of AnnualStatementEntry items, writes them to the database, and appends them to a CSV report.
-    public void write(Chunk<? extends AnnualStatementEntry> chunk) throws IOException {
-        initializeReport();
-        jdbcTemplate.batchUpdate("""
+    public void write(Chunk<? extends AnnualStatementEntry> chunk) {
+        jdbc.batchUpdate("""
                 INSERT INTO annual_statement_entries(account_id, transaction_date, transaction_type, amount, description, audit_flag)
                 VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT (account_id, transaction_date, transaction_type, amount, description)
                 DO UPDATE SET audit_flag = EXCLUDED.audit_flag
-                """,
-                chunk.getItems(),
-                chunk.size(),
-                (ps, item) -> {
+                """, chunk.getItems(), chunk.size(), (ps, item) -> {
                     ps.setLong(1, item.accountId());
                     ps.setObject(2, item.transactionDate());
                     ps.setString(3, item.transactionType());
@@ -54,50 +38,49 @@ public class AnnualStatementReportWriter implements ItemWriter<AnnualStatementEn
                     ps.setString(5, item.description());
                     ps.setString(6, item.auditFlag());
                 });
-
-        appendReportLines(chunk);
     }
 
-    private void appendReportLines(Chunk<? extends AnnualStatementEntry> chunk) throws IOException {
-        // Build the chunk text before entering the synchronized block so the lock is held only during file IO.
-        // This keeps the critical section short while still writing each chunk as one contiguous CSV append.
-        StringBuilder lines = new StringBuilder();
-        for (AnnualStatementEntry item : chunk) {
-            lines.append(item.accountId()).append(',')
-                    .append(item.transactionDate()).append(',')
-                    .append(item.transactionType()).append(',')
-                    .append(item.amount().setScale(2, RoundingMode.HALF_UP)).append(',')
-                    .append(escape(item.description())).append(',')
-                    .append(item.auditFlag()).append(System.lineSeparator());
-        }
-        synchronized (reportLock) {
-            Files.writeString(reportPath, lines.toString(), StandardCharsets.UTF_8, StandardOpenOption.APPEND);
+    @Override
+    public void afterJob(JobExecution execution) {
+        if (execution.getStatus() != BatchStatus.COMPLETED) return;
+        try {
+            exportReport();
+        } catch (IOException ex) {
+            execution.setStatus(BatchStatus.FAILED);
+            execution.setExitStatus(ExitStatus.FAILED.addExitDescription(ex));
         }
     }
 
-    // This method initializes the CSV report file by creating the necessary directories and writing the header line if it hasn't been initialized yet.
-    private void initializeReport() throws IOException {
-        // The lock works together with initialized.compareAndSet: only one thread creates/truncates the report,
-        // and every other thread waits until the header is ready before appending its chunk.
-        synchronized (reportLock) {
-            if (initialized.compareAndSet(false, true)) {
-                Path parent = reportPath.getParent();
-                if (parent != null) {
-                    Files.createDirectories(parent);
-                }
-                Files.writeString(reportPath,
-                        "account_id,transaction_date,transaction_type,amount,description,audit_flag" + System.lineSeparator(),
-                        StandardCharsets.UTF_8,
-                        StandardOpenOption.CREATE,
-                        StandardOpenOption.TRUNCATE_EXISTING);
+    // Export committed rows once, so chunk retries cannot duplicate the CSV.
+    public void exportReport() throws IOException {
+        Files.createDirectories(report.getParent());
+        Path temporary = Files.createTempFile(report.getParent(), "annual-", ".csv");
+        try {
+            try (CSVPrinter csv = new CSVPrinter(Files.newBufferedWriter(temporary, StandardCharsets.UTF_8),
+                    CSVFormat.DEFAULT.builder().setHeader("account_id", "transaction_date", "transaction_type",
+                            "amount", "description", "audit_flag").get())) {
+                jdbc.query("""
+                        SELECT account_id, transaction_date, transaction_type, amount, description, audit_flag
+                        FROM annual_statement_entries
+                        ORDER BY account_id, transaction_date, transaction_type, amount, description
+                        """, (org.springframework.jdbc.core.RowCallbackHandler) rs -> {
+                            try {
+                                csv.printRecord(rs.getLong(1), rs.getDate(2), rs.getString(3),
+                                        rs.getBigDecimal(4), rs.getString(5), rs.getString(6));
+                            } catch (IOException ex) {
+                                throw new java.io.UncheckedIOException(ex);
+                            }
+                        });
             }
+            try {
+                Files.move(temporary, report, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            } catch (AtomicMoveNotSupportedException ex) {
+                Files.move(temporary, report, StandardCopyOption.REPLACE_EXISTING);
+            }
+        } catch (java.io.UncheckedIOException ex) {
+            throw ex.getCause();
+        } finally {
+            Files.deleteIfExists(temporary);
         }
-    }
-
-    private String escape(String value) {
-        if (value.contains(",") || value.contains("\"")) {
-            return "\"" + value.replace("\"", "\"\"") + "\"";
-        }
-        return value;
     }
 }

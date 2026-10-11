@@ -7,6 +7,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 
 @Configuration
+@org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication
 public class SecurityConfig {
 
     @Bean

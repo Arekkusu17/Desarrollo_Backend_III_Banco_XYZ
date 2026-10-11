@@ -4,3 +4,5 @@ output/
 .vscode/
 *.iml
 .DS_Store
+/scripts/verify-eft.sh
+*.drawio.bkp

@@ -13,7 +13,7 @@ import cl.duoc.backendiii.events.WithdrawalRequestedEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.kafka.core.KafkaTemplate;
+import cl.duoc.backendiii.events.store.JdbcEventStore;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -28,16 +28,16 @@ public class AtmService {
 
     private final CoreBankingClient coreBankingClient;
     private final WithdrawalTransactionRepository repository;
-    private final KafkaTemplate<String, Object> kafkaTemplate;
+    private final JdbcEventStore events;
     private final BigDecimal maxWithdrawalAmount;
 
     public AtmService(CoreBankingClient coreBankingClient,
                       WithdrawalTransactionRepository repository,
-                      KafkaTemplate<String, Object> kafkaTemplate,
+                      JdbcEventStore events,
                       @Value("${atm.max-withdrawal-amount}") BigDecimal maxWithdrawalAmount) {
         this.coreBankingClient = coreBankingClient;
         this.repository = repository;
-        this.kafkaTemplate = kafkaTemplate;
+        this.events = events;
         this.maxWithdrawalAmount = maxWithdrawalAmount;
     }
 
@@ -46,11 +46,13 @@ public class AtmService {
         return new AtmBalanceResponse("ATM", balance.accountId(), balance.availableBalance(), "CLP");
     }
 
+    @org.springframework.transaction.annotation.Transactional
     public WithdrawalTransactionResponse withdraw(long accountId, WithdrawalRequest request) {
-        if (request.amount() == null || request.amount().compareTo(BigDecimal.ZERO) <= 0) {
+        if (request.amount() == null || request.amount().compareTo(BigDecimal.ZERO) <= 0
+                || request.amount().stripTrailingZeros().scale() > 2) {
             return rejected(accountId, request.amount(), "Monto de retiro invalido");
         }
-        if (request.pin() == null || request.pin().length() != 4) {
+        if (request.pin() == null || !request.pin().matches("[0-9]{4}")) {
             return rejected(accountId, request.amount(), "PIN invalido");
         }
         if (request.amount().compareTo(maxWithdrawalAmount) > 0) {
@@ -83,6 +85,7 @@ public class AtmService {
                 .toList();
     }
 
+    @org.springframework.transaction.annotation.Transactional
     public Optional<WithdrawalTransactionResponse> replayWithdrawalRequested(UUID transactionId) {
         Optional<WithdrawalTransaction> transaction = repository.findById(transactionId);
         transaction.ifPresent(this::publishWithdrawalRequested);
@@ -98,7 +101,7 @@ public class AtmService {
                 transaction.getAmount(),
                 "ATM"
         );
-        kafkaTemplate.send(TopicNames.WITHDRAWAL_REQUESTED, transaction.getTransactionId().toString(), event);
+        events.replay(TopicNames.WITHDRAWAL_REQUESTED, event);
         log.info("[PRODUCER] WithdrawalRequested publicado transactionId={} eventId={}",
                 transaction.getTransactionId(), event.eventId());
     }

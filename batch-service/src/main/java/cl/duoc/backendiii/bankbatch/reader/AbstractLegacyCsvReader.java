@@ -1,27 +1,25 @@
 package cl.duoc.backendiii.bankbatch.reader;
 
-import org.springframework.batch.item.ItemReader;
+import org.springframework.batch.item.ItemStreamReader;
+import org.springframework.batch.item.ExecutionContext;
 import org.springframework.batch.item.file.FlatFileParseException;
 import org.springframework.core.io.ClassPathResource;
 
-import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
-// Base reader for the legacy CSV files used in the batch jobs.
-// It follows the same approach used in the Week 2 reference project:
-// load the CSV lines once, keep them in memory, and expose a synchronized read() method.
-// Since it implements ItemReader only, not ItemStream, Spring Batch does not try to store
-// restart offset metadata while the Step is running with a TaskExecutor.
-public abstract class AbstractLegacyCsvReader<T> implements ItemReader<T> {
+// Each partition owns a reader and commits its offset with the chunk transaction.
+public abstract class AbstractLegacyCsvReader<T> implements ItemStreamReader<T> {
 
-    private final List<String> lines;
+    private final List<String[]> lines;
     private final int expectedFields;
     private final int endIndexInclusive;
     private int currentIndex;
+    private final int startIndex;
+    private java.util.Map<String, Integer> firstRows;
 
     protected AbstractLegacyCsvReader(String resourcePath, int expectedFields) throws IOException {
         this(resourcePath, expectedFields, 0, null);
@@ -30,7 +28,8 @@ public abstract class AbstractLegacyCsvReader<T> implements ItemReader<T> {
     protected AbstractLegacyCsvReader(String resourcePath, int expectedFields, int startIndex, Integer endIndexInclusive) throws IOException {
         this.lines = loadLines(resourcePath);
         this.expectedFields = expectedFields;
-        this.currentIndex = Math.max(startIndex, 0);
+        this.startIndex = Math.max(startIndex, 0);
+        this.currentIndex = this.startIndex;
         int lastAvailableIndex = Math.max(lines.size() - 1, -1);
         this.endIndexInclusive = endIndexInclusive == null
                 ? lastAvailableIndex
@@ -38,16 +37,30 @@ public abstract class AbstractLegacyCsvReader<T> implements ItemReader<T> {
     }
 
     @Override
+    public synchronized void open(ExecutionContext context) {
+        currentIndex = context.getInt("csv.nextIndex", startIndex);
+        if (currentIndex < startIndex || currentIndex > endIndexInclusive + 1) {
+            throw new org.springframework.batch.item.ItemStreamException("Checkpoint fuera de la particion");
+        }
+    }
+
+    @Override
+    public synchronized void update(ExecutionContext context) { context.putInt("csv.nextIndex", currentIndex); }
+
+    @Override
+    public void close() { }
+
+    @Override
     public synchronized T read() {
         if (currentIndex > endIndexInclusive || currentIndex >= lines.size()) {
             return null;
         }
 
-        String line = lines.get(currentIndex);
+        String[] fields = lines.get(currentIndex);
+        String line = String.join(",", fields);
         int lineNumber = currentIndex + 2;
         currentIndex++;
 
-        String[] fields = line.split(",", -1);
         if (fields.length != expectedFields) {
             throw new FlatFileParseException(
                     "Invalid CSV field count. Expected " + expectedFields + " but found " + fields.length,
@@ -55,24 +68,40 @@ public abstract class AbstractLegacyCsvReader<T> implements ItemReader<T> {
                     lineNumber);
         }
 
-        return map(fields);
+        if (firstRows == null) {
+            firstRows = new java.util.HashMap<>();
+            for (int i = 0; i < lines.size(); i++) {
+                String[] candidate = lines.get(i);
+                if (candidate.length == expectedFields) {
+                    String key = deduplicationKey(candidate);
+                    if (key != null) firstRows.putIfAbsent(key, i);
+                }
+            }
+        }
+        String key = deduplicationKey(fields);
+        boolean duplicate = key != null && firstRows.get(key) != currentIndex - 1;
+        return map(fields, duplicate);
     }
 
     protected abstract T map(String[] fields);
 
-    private List<String> loadLines(String resourcePath) throws IOException {
-        List<String> loadedLines = new ArrayList<>();
+    protected T map(String[] fields, boolean duplicate) {
+        return map(fields);
+    }
+
+    protected String deduplicationKey(String[] fields) {
+        return null;
+    }
+
+    private List<String[]> loadLines(String resourcePath) throws IOException {
+        List<String[]> loadedLines = new ArrayList<>();
         ClassPathResource resource = new ClassPathResource(resourcePath);
 
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(resource.getInputStream(), StandardCharsets.UTF_8))) {
-            String line;
-            boolean header = true;
-            while ((line = reader.readLine()) != null) {
-                if (header) {
-                    header = false;
-                    continue;
-                }
-                loadedLines.add(line);
+        try (var reader = new InputStreamReader(resource.getInputStream(), StandardCharsets.UTF_8);
+             var parser = org.apache.commons.csv.CSVFormat.DEFAULT.builder()
+                     .setHeader().setSkipHeaderRecord(true).get().parse(reader)) {
+            for (var record : parser) {
+                loadedLines.add(record.values());
             }
         }
 

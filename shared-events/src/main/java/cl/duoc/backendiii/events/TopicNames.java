@@ -5,6 +5,7 @@ public final class TopicNames {
     }
 
     public static final String WITHDRAWAL_REQUESTED = "withdrawal.requested";
+    public static final String PAYMENT_COMPLETED = "payment.completed";
     public static final String FUNDS_RESERVED = "funds.reserved";
     public static final String FUNDS_REJECTED = "funds.rejected";
     public static final String RISK_APPROVED = "risk.approved";

@@ -34,7 +34,7 @@ spring:
 
 legacy:
   data:
-    week: semana_3
+    week: ${LEGACY_DATA_WEEK:eft}
 
 batch:
   chunk-size: 5

@@ -1,269 +1,79 @@
-# Banco XYZ - Semana 8
+# Banco XYZ - Semana 9 (EFT)
 
-Proyecto final de Desarrollo Backend III para implementar una arquitectura de microservicios segura, resiliente y orientada a eventos con Spring Cloud.
+Proyecto de Desarrollo Backend III con Spring Boot 3, Java 21, Spring Cloud, OAuth2/JWT, Resilience4j, Kafka y Docker Compose.
 
-La solucion incorpora OAuth2.0/JWT, Docker, Docker Compose, Resilience4j y Kafka sobre el sistema Banco XYZ. El flujo principal validado es el retiro por canal ATM, procesado de forma asincrona mediante eventos y compensacion ante rechazo de riesgo.
-
-## Objetivo
-
-Preparar los microservicios de Banco XYZ para un entorno cloud resiliente y seguro:
-
-- Proteger servicios con OAuth2.0 y JWT.
-- Dockerizar todos los microservicios.
-- Orquestar la solucion completa con Docker Compose.
-- Mantener tolerancia a fallos con Resilience4j.
-- Integrar mensajeria asincrona con Kafka.
-- Documentar ejecucion, pruebas y evidencias.
+Repositorio: [Desarrollo_Backend_III_Banco_XYZ](https://github.com/Arekkusu17/Desarrollo_Backend_III_Banco_XYZ).
 
 ## Arquitectura
 
-![Arquitectura Banco XYZ Semana 8](evidencias/00-arquitectura.png)
+![Arquitectura Banco XYZ: canales, microservicios, batch y eventos en EC2](evidencias/00-arquitectura.png)
 
-```text
-Cliente / Postman
-       |
-       v
-API Gateway :8084
-       |
-       +--> BFF Web :8081
-       +--> BFF Mobile :8082
-       +--> BFF ATM :8083
-                |
-                v
-          Batch Service :8080
-                |
-                v
-           PostgreSQL :5432
+[Abrir diagrama editable en draw.io](evidencias/00-arquitectura.drawio).
 
-Auth Server :9000       OAuth2 + JWT + JWK
-Config Server :8888     configuracion centralizada
-Eureka :8761            service discovery
-Kafka :9092             eventos de retiro y compensacion
-Risk Service :8090      evaluacion de riesgo + Resilience4j
-Notification :8085      notificacion y auditoria de eventos
-```
-
-## Componentes
-
-| Modulo | Proposito |
+| Componente | Responsabilidad |
 | --- | --- |
-| `auth-server` | Servidor OAuth2.0 con flujo `client_credentials`, emision JWT y JWK Set. |
-| `api-gateway` | Entrada unica a los BFF, validando bearer token y scopes. |
-| `bff-web` | Canal Web para dashboard de cuenta. |
-| `bff-mobile` | Canal Mobile para vista liviana de cuenta. |
-| `bff-atm` | Canal ATM para saldo, retiro y seguimiento de transacciones. |
-| `batch-service` | Backend central, API bancaria, batch legacy, PostgreSQL y reserva/liberacion de fondos. |
-| `risk-service` | Evaluacion de riesgo de retiros y fallback con Resilience4j. |
-| `notification-service` | Consumidor de eventos finales y auditoria. |
-| `shared-events` | Contratos compartidos para eventos Kafka. |
-| `config-server` | Configuracion centralizada para microservicios. |
-| `discovery-server` | Registro Eureka para descubrimiento de servicios. |
+| ms-account | Apertura, mantenimiento, cierre, saldos, movimientos y reserva/compensacion |
+| ms-payment | Depositos, pagos y transferencias; idempotencia, reintentos y outbox Kafka |
+| ms-customer | Perfiles persistentes de clientes |
+| batch-service | Transacciones diarias, intereses mensuales y estados anuales CSV |
+| BFF Web / Mobile / ATM | Respuestas por canal y saga persistente de retiro ATM |
+| Gateway / Auth / Config / Eureka | Enrutamiento, OAuth2/JWT, configuracion y descubrimiento |
+| Kafka / Risk / Notification | Eventos, evaluacion de riesgo y notificaciones |
 
-## Requisitos
+PostgreSQL compartido conserva datos operativos y metadatos batch. Es una simplificacion de laboratorio, no una arquitectura productiva con bases aisladas.
 
-- Java 21.
-- Docker y Docker Compose.
-- Maven Wrapper incluido.
-- Postman para ejecutar la coleccion de validacion.
+## Requisitos y ejecucion
 
-## Ejecucion
-
-Levantar la solucion completa:
+Java 21 para Maven y `keytool`; Docker Engine y Compose compatible con `!reset`/`!override` (2.24.4 o posterior); Postman y curl.
 
 ```bash
-docker compose up -d --build
-```
-
-Si el puerto `9000` esta ocupado, publicar `auth-server` en otro puerto del host:
-
-```bash
-AUTH_SERVER_PORT=9001 docker compose up -d --build
-export AUTH_SERVER_PORT=9001
-```
-
-La variable `AUTH_SERVER_PORT` solo cambia el puerto expuesto en el host. Dentro de Docker, los servicios siguen usando `http://auth-server:9000`.
-
-Revisar contenedores:
-
-```bash
+./mvnw verify
+docker compose up -d --build --remove-orphans
 docker compose ps
 ```
 
-Detener el ambiente:
+El comando Compose anterior usa HTTP y solo se recomienda para desarrollo local. En EC2 seguir el procedimiento HTTPS de [despliegue](entregables/despliegue.md). Si el puerto 9000 esta ocupado, exportar `AUTH_SERVER_PORT=9001` antes de ejecutar Compose y ajustar Postman; el puerto interno sigue siendo 9000.
 
-```bash
-docker compose down
-```
+## Documentacion de entrega
 
-Detener y eliminar datos locales de PostgreSQL:
+- [Instrucciones y pruebas](entregables/instrucciones.md): OAuth2, Postman, operaciones, batch y recuperacion.
+- [Despliegue S3 y EC2](entregables/despliegue.md): requisitos, instalacion, HTTPS y demostracion temporal de escalabilidad.
 
-```bash
-docker compose down -v
-```
+Este README es el unico README general de entrega. El informe tecnico y el video estan pendientes; no se incluyen en esta etapa.
+
+Las capturas de Semana 9 estan organizadas en [despliegue](evidencias/despliegue/) (EC2, contenedores, Security Group y S3) y [pruebas](evidencias/pruebas/) (Postman, batch, escalabilidad, Kafka, Resilience4j y Eureka). Los documentos de semanas anteriores son antecedentes, no resultados de esta EFT.
+
+## Validacion
+
+| Verificacion | Resultado registrado |
+| --- | --- |
+| Tests locales | 56 unitarios y 4 de integracion de recuperacion batch |
+| EC2, 11 de octubre de 2026 | HTTPS, scopes, BFFs, ATM, clientes, cuentas, pagos y batch validados |
+| Escalabilidad | Dos instancias observadas por microservicio; carpeta 28 con todos los tests Passed |
+
+![Resultado Postman: distribucion entre replicas de los tres microservicios](evidencias/pruebas/34-runner-escalabilidad.png)
+
+La corrida utilizo 12 muestras por servicio. Comprueba distribucion de lecturas, no rendimiento bajo carga ni alta disponibilidad entre hosts. Las pruebas de integracion locales requieren una base aislada; sin sus variables Maven las omite.
 
 ## Puertos
 
-| Servicio | URL |
+EC2 validada: Gateway `https://34.229.100.153:8084` y Auth `https://34.229.100.153:9001`.
+
+| Servicio | Puerto del host |
 | --- | --- |
-| Auth Server | `http://localhost:${AUTH_SERVER_PORT:-9000}` |
-| API Gateway | `http://localhost:8084` |
-| BFF Web | `http://localhost:8081` |
-| BFF Mobile | `http://localhost:8082` |
-| BFF ATM | `http://localhost:8083` |
-| Batch Service | `http://localhost:8080` |
-| Risk Service | `http://localhost:8090` |
-| Notification Service | `http://localhost:8085` |
-| Config Server | `http://localhost:8888` |
-| Eureka | `http://localhost:8761` |
-| PostgreSQL | `localhost:5432` |
-| Kafka | `localhost:29092` para clientes locales, `kafka:9092` dentro de Docker |
+| Auth Server | 9000 por defecto; 9001 en la EC2 validada |
+| Gateway | 8084 |
+| BFF Web / Mobile / ATM | 8081 / 8082 / 8083 |
+| ms-account / ms-payment / ms-customer | 8091 / 8092 / 8093 |
+| Batch / Risk / Notification | 8080 / 8090 / 8085 |
+| Config / Eureka | 8888 / 8761 |
+| PostgreSQL / Kafka externo | 5432 / 29092 |
 
-## Seguridad OAuth2
+Los tres microservicios dejan de publicar puertos directos al aplicar `docker-compose.scale.yml`. En ese modo se prueban a traves del Gateway. No abrir PostgreSQL, Kafka ni las consolas administrativas a Internet.
 
-`auth-server` emite JWT mediante `client_credentials`. Gateway, BFFs, Batch Service y Risk Service validan bearer tokens.
 
-| Cliente | Secreto | Scopes |
-| --- | --- | --- |
-| `banco-xyz-demo` | `demo-secret` | `web.read`, `mobile.read`, `atm.read`, `atm.write`, `risk.read` |
-| `bff-web` | `bff-web-secret` | `core.read` |
-| `bff-mobile` | `bff-mobile-secret` | `core.read` |
-| `bff-atm` | `bff-atm-secret` | `core.read`, `core.write` |
+## Alcance
 
-Rutas principales protegidas:
+Los tres CSV EFT tienen 1000 registros cada uno y proceden de [fin_legacy_data](https://github.com/KariVillagran/fin_legacy_data). No hay COBOL ejecutable ni pruebas de carga: no se afirma equivalencia medida contra el legacy o mejora de rendimiento. Las proyecciones se presentan como estimaciones.
 
-| Componente | Ruta | Scope |
-| --- | --- | --- |
-| `api-gateway` | `/gateway/web/**` | `web.read` |
-| `api-gateway` | `/gateway/mobile/**` | `mobile.read` |
-| `api-gateway` | `/gateway/atm/**` | `atm.read` o `atm.write` |
-| `batch-service` | `/api/**` | `core.read` o `core.write` |
-| `risk-service` | `/api/risk/admin/**` | `risk.read` |
-
-Obtener token de laboratorio:
-
-```bash
-curl -u banco-xyz-demo:demo-secret \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  --data-urlencode "grant_type=client_credentials" \
-  --data-urlencode "scope=web.read mobile.read atm.read atm.write risk.read" \
-  http://localhost:${AUTH_SERVER_PORT:-9000}/oauth2/token
-```
-
-Usar token:
-
-```bash
-curl -H "Authorization: Bearer $TOKEN" \
-  http://localhost:8084/gateway/web/cuentas/101/dashboard
-```
-
-Resultados esperados:
-
-| Caso | Resultado |
-| --- | --- |
-| Sin bearer token | `401 Unauthorized` |
-| Token valido sin scope requerido | `403 Forbidden` |
-| Token valido con scope requerido | `200 OK` |
-
-## Flujo ATM Asincrono
-
-El retiro ATM se procesa como saga coreografiada con Kafka.
-
-```text
-bff-atm
-  -> withdrawal.requested
-batch-service
-  -> funds.reserved
-risk-service
-  -> risk.approved / risk.rejected
-bff-atm
-  -> withdrawal.confirmed / withdrawal.cancelled
-notification-service
-  -> notificacion y auditoria
-```
-
-Si el riesgo rechaza una transaccion o se activa el fallback de Resilience4j, `bff-atm` publica `funds.release-requested` y `batch-service` responde con `funds.released`.
-
-## Pruebas
-
-Ejecutar pruebas automatizadas:
-
-```bash
-./mvnw test
-```
-
-Coleccion Postman:
-
-```text
-postman/Banco_XYZ_Semana_8.postman_collection.json
-```
-
-Para usarla:
-
-1. Levantar Docker Compose.
-2. Importar la coleccion en Postman.
-3. Ajustar `authBaseUrl` si se uso `AUTH_SERVER_PORT=9001`.
-4. Ejecutar la coleccion completa con Collection Runner.
-
-La coleccion valida:
-
-- Health del Gateway.
-- Emision de token OAuth2.
-- Respuesta `401` sin token.
-- Respuesta `403` con scope incorrecto.
-- Acceso autorizado por Gateway.
-- Retiro ATM `PENDING -> CONFIRMED`.
-- Rechazo por falla simulada de riesgo.
-- Compensacion y restauracion de `risk-service`.
-
-## Evidencias
-
-Las evidencias oficiales estan en `evidencias/`.
-
-### 00 - Arquitectura
-
-![Arquitectura Semana 8](evidencias/00-arquitectura.png)
-
-### 01 - Servicios levantados
-
-![Servicios Semana 8](evidencias/01-servicios-levantados.png)
-
-### 02 - Pruebas Maven
-
-![Pruebas Maven Semana 8](evidencias/02-mvn-test-success.png)
-
-### 03 - Token OAuth2
-
-![Token OAuth2](evidencias/03-token-oauth2.png)
-
-### 04 - Rechazo sin token
-
-![Rechazo sin token](evidencias/04-rechazo-sin-token.png)
-
-### 05 - Rechazo por scope incorrecto
-
-![Rechazo scope incorrecto](evidencias/05-rechazo-scope-incorrecto.png)
-
-### 06 - Gateway autorizado
-
-![Gateway autorizado](evidencias/06-gateway-autorizado.png)
-
-### 07 - Retiro ATM pendiente
-
-![Retiro ATM pendiente](evidencias/07-retiro-atm-pendiente.png)
-
-### 08 - Retiro ATM confirmado
-
-![Retiro ATM confirmado](evidencias/08-retiro-atm-confirmado.png)
-
-### 09 - Logs Kafka
-
-![Logs Kafka](evidencias/09-logs-kafka.png)
-
-### 10 - Resilience4j
-
-![Resilience4j](evidencias/10-resilience4j.png)
-
-### 11 - Collection Runner Postman
-
-![Coleccion Postman Semana 8](evidencias/11-postman-collection-run.png)
-
+El escalado a dos replicas es temporal; la pauta no exige mantenerlas permanentemente. Resilience4j se evidencia en estado CLOSED, sin demostrar el ciclo de apertura y recuperacion.

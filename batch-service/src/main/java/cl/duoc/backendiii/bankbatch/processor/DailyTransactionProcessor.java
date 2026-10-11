@@ -43,7 +43,8 @@ public class DailyTransactionProcessor implements ItemProcessor<LegacyTransactio
             String type = LegacyParsing.requireText(item.type(), "tipo vacio").toLowerCase();
             String key = id + "|" + date + "|" + amount + "|" + type;
 
-            if (!processedKeys.add(key)) {
+            if (Boolean.TRUE.equals(item.sourceDuplicate())
+                    || item.sourceDuplicate() == null && !processedKeys.add(key)) {
                 reject(item.id(), "transaccion diaria duplicada", item);
                 return null;
             }

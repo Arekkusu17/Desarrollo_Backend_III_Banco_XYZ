@@ -46,19 +46,22 @@ public class BatchConfiguration {
     @Bean
     // The @StepScope annotation indicates that the bean is scoped to the lifecycle of a step execution.
     // This reader loads the daily transactions file for the configured week.
-    // It follows the professor's Week 2 approach: a simple in-memory ItemReader with synchronized read().
-    // Since it does not implement ItemStream, Spring Batch does not store restart offset metadata for this parallel Step.
+    // Each worker reads its own range and persists its checkpoint.
     @StepScope
-    public LegacyTransactionCsvReader transactionReader(@Value("${legacy.data.week}") String dataWeek) throws IOException {
-        return new LegacyTransactionCsvReader("input/" + dataWeek + "/transacciones.csv");
+    public LegacyTransactionCsvReader transactionReader(@Value("${legacy.data.week}") String dataWeek,
+            @Value("#{stepExecutionContext['start']}") Integer start,
+            @Value("#{stepExecutionContext['end']}") Integer end) throws IOException {
+        return new LegacyTransactionCsvReader("input/" + dataWeek + "/transacciones.csv", start == null ? 0 : start, end);
     }
 
     @Bean
     // This reader loads the accounts used to calculate monthly interest.
-    // It keeps CSV input configurable by week and inherits synchronized read() for parallel execution.
+    // Partition-local offsets make restarts safe while retaining parallel execution.
     @StepScope
-    public LegacyInterestAccountCsvReader interestReader(@Value("${legacy.data.week}") String dataWeek) throws IOException {
-        return new LegacyInterestAccountCsvReader("input/" + dataWeek + "/intereses.csv");
+    public LegacyInterestAccountCsvReader interestReader(@Value("${legacy.data.week}") String dataWeek,
+            @Value("#{stepExecutionContext['start']}") Integer start,
+            @Value("#{stepExecutionContext['end']}") Integer end) throws IOException {
+        return new LegacyInterestAccountCsvReader("input/" + dataWeek + "/intereses.csv", start == null ? 0 : start, end);
     }
 
     @Bean
@@ -143,18 +146,18 @@ public class BatchConfiguration {
     // Flow: transacciones.csv -> transactionReader -> DailyTransactionProcessor
     //       -> transactionWriter -> daily_transaction_summary.
     // Uses chunks of size 5, fault tolerance, retry for transient database failures,
-    // and parallel execution through batchTaskExecutor.
-    public Step dailyTransactionsStep(JobRepository jobRepository,
+    // and parallel execution through the partition manager.
+    public Step dailyTransactionsWorkerStep(JobRepository jobRepository,
                                       PlatformTransactionManager transactionManager,
                                       ItemReader<LegacyTransaction> transactionReader,
                                       DailyTransactionProcessor processor,
                                       JdbcBatchItemWriter<DailyTransactionSummary> transactionWriter,
                                       BankRecordSkipPolicy bankRecordSkipPolicy,
                                       BankSkipListener bankSkipListener,
-                                      TaskExecutor batchTaskExecutor,
+                                      BatchExecutionLock executionLock,
                                       @Value("${batch.chunk-size}") int chunkSize,
                                       @Value("${batch.retry-limit}") int retryLimit) {
-        return new StepBuilder("dailyTransactionsStep", jobRepository)
+        return new StepBuilder("dailyTransactionsWorkerStep", jobRepository)
                 .<LegacyTransaction, DailyTransactionSummary>chunk(chunkSize, transactionManager)
                 .reader(transactionReader)
                 .processor(processor)
@@ -168,8 +171,7 @@ public class BatchConfiguration {
                 .skipPolicy(bankRecordSkipPolicy)
                 // Listener that stores read, process, and write skips in rejected_records.
                 .listener(bankSkipListener)
-                // Scaling: allows chunks to be processed in parallel with the configured pool.
-                .taskExecutor(batchTaskExecutor)
+                .listener(executionLock)
                 .build();
     }
 
@@ -180,17 +182,17 @@ public class BatchConfiguration {
     // Flow: intereses.csv -> interestReader -> MonthlyInterestProcessor
     //       -> interestWriter -> monthly_interest_results.
     // Uses the same fault-tolerance and scaling policy used by the other Steps.
-    public Step monthlyInterestStep(JobRepository jobRepository,
+    public Step monthlyInterestWorkerStep(JobRepository jobRepository,
                                     PlatformTransactionManager transactionManager,
                                     ItemReader<LegacyInterestAccount> interestReader,
                                     MonthlyInterestProcessor processor,
                                     JdbcBatchItemWriter<MonthlyInterestResult> interestWriter,
                                     BankRecordSkipPolicy bankRecordSkipPolicy,
                                     BankSkipListener bankSkipListener,
-                                    TaskExecutor batchTaskExecutor,
+                                    BatchExecutionLock executionLock,
                                     @Value("${batch.chunk-size}") int chunkSize,
                                     @Value("${batch.retry-limit}") int retryLimit) {
-        return new StepBuilder("monthlyInterestStep", jobRepository)
+        return new StepBuilder("monthlyInterestWorkerStep", jobRepository)
                 .<LegacyInterestAccount, MonthlyInterestResult>chunk(chunkSize, transactionManager)
                 .reader(interestReader)
                 .processor(processor)
@@ -203,8 +205,7 @@ public class BatchConfiguration {
                 .skipPolicy(bankRecordSkipPolicy)
                 // Centralizes skip traceability in the rejected_records table.
                 .listener(bankSkipListener)
-                // Runs interest chunks using the configured 3-thread pool.
-                .taskExecutor(batchTaskExecutor)
+                .listener(executionLock)
                 .build();
     }
 
@@ -222,6 +223,7 @@ public class BatchConfiguration {
                                            AnnualStatementReportWriter annualStatementReportWriter,
                                            BankRecordSkipPolicy bankRecordSkipPolicy,
                                            BankSkipListener bankSkipListener,
+                                           BatchExecutionLock executionLock,
                                            @Value("${batch.chunk-size}") int chunkSize,
                                            @Value("${batch.retry-limit}") int retryLimit) {
         return new StepBuilder("annualStatementsWorkerStep", jobRepository)
@@ -237,7 +239,35 @@ public class BatchConfiguration {
                 .skipPolicy(bankRecordSkipPolicy)
                 // Registers batch skips for later audit.
                 .listener(bankSkipListener)
+                .listener(executionLock)
                 .build();
+    }
+
+    @Bean
+    public Step dailyTransactionsStep(JobRepository repository, Step dailyTransactionsWorkerStep,
+            TaskExecutor batchTaskExecutor, @Value("${legacy.data.week}") String week,
+            @Value("${batch.partition-grid-size}") int grid) {
+        return partitionedStep("dailyTransactionsStep", "transacciones.csv", week,
+                repository, dailyTransactionsWorkerStep, batchTaskExecutor, grid);
+    }
+
+    @Bean
+    public Step monthlyInterestStep(JobRepository repository, Step monthlyInterestWorkerStep,
+            TaskExecutor batchTaskExecutor, @Value("${legacy.data.week}") String week,
+            @Value("${batch.partition-grid-size}") int grid) {
+        return partitionedStep("monthlyInterestStep", "intereses.csv", week,
+                repository, monthlyInterestWorkerStep, batchTaskExecutor, grid);
+    }
+
+    private Step partitionedStep(String name, String file, String week, JobRepository repository,
+            Step worker, TaskExecutor executor, int grid) {
+        var handler = new TaskExecutorPartitionHandler();
+        handler.setStep(worker);
+        handler.setTaskExecutor(executor);
+        handler.setGridSize(grid);
+        return new StepBuilder(name, repository).partitioner(worker.getName(),
+                new cl.duoc.backendiii.bankbatch.partition.CsvRangePartitioner(week, file, name + "Partition"))
+                .partitionHandler(handler).build();
     }
 
     @Bean
@@ -309,9 +339,11 @@ public class BatchConfiguration {
     public Job annualStatementsJob(JobRepository jobRepository,
                                    Step annualStatementsPartitionStep,
                                    JobExecutionSummaryListener jobExecutionSummaryListener,
-                                   BankJobCompletionDecider bankJobCompletionDecider) {
+                                   BankJobCompletionDecider bankJobCompletionDecider,
+                                   AnnualStatementReportWriter annualStatementReportWriter) {
         return new JobBuilder("annualStatementsJob", jobRepository)
                 .listener(jobExecutionSummaryListener)
+                .listener(annualStatementReportWriter)
                 .start(annualStatementsPartitionStep)
                 .next(bankJobCompletionDecider)
                 .on(BankJobCompletionDecider.REVIEW_REQUIRED).end(BankJobCompletionDecider.REVIEW_REQUIRED)

@@ -55,7 +55,7 @@ class AccountControllerTest {
 
     private static class NoopAccountRepository extends AccountRepository {
         NoopAccountRepository() {
-            super(null);
+            super(null, null);
         }
 
         @Override

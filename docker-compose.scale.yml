@@ -1,0 +1,32 @@
+services:
+  ms-account:
+    environment:
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
+    container_name: !reset null
+    ports: !override []
+    deploy:
+      replicas: 2
+
+  ms-payment:
+    environment:
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
+    container_name: !reset null
+    ports: !override []
+    deploy:
+      replicas: 2
+  ms-customer:
+    environment:
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
+    container_name: !reset null
+    ports: !override []
+    deploy:
+      replicas: 2
+
+networks:
+  default:
+    ipam:
+      config:
+        # Keep the allocation pool covered by TLS_SCALE_NETWORK in the certificate script.
+        - subnet: 172.30.90.0/24
+          ip_range: 172.30.90.0/26
+          gateway: 172.30.90.254
