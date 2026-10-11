@@ -188,7 +188,7 @@ Confirmar los tres jobs COMPLETED, sus particiones, rechazos y reporte anual con
 
 El criterio 6 de la pauta solicita Docker y escalabilidad horizontal de tres microservicios en la nube. No fija dos replicas permanentes. Esta demostracion usa dos temporalmente en una EC2; no demuestra alta disponibilidad entre hosts.
 
-Aplicar el override, que elimina container_name y los puertos fijos de ms-account, ms-payment y ms-customer:
+Aplicar el override, que elimina container_name y los puertos fijos de ms-account, ms-payment y ms-customer. Tambien anuncia la IP individual de cada replica en Eureka: un hostname compartido puede dirigir las conexiones HTTPS al mismo contenedor aunque Eureka tenga dos registros.
 
 ```bash
 export COMPOSE_FILE=docker-compose.yml:docker-compose.secure.yml:docker-compose.scale.yml
@@ -198,6 +198,40 @@ docker compose up -d --remove-orphans \
 docker compose ps
 docker stats --no-stream
 ```
+
+Antes de probar el balanceo, incluir las IP actuales en el certificado. Conservar TLS_PUBLIC_IP (la IP publica de EC2), TLS_PUBLIC_DNS si se utilizo y TLS_STORE_PASSWORD con los mismos valores del despliegue. No publicar la clave ni los almacenes de certificados.
+
+```bash
+export TLS_EXTRA_IPS="$(docker inspect \
+  $(docker compose ps -q ms-account ms-payment ms-customer) \
+  --format '{{range .NetworkSettings.Networks}}{{println .IPAddress}}{{end}}' \
+  | sort -u | sed '/^$/d' | paste -sd, -)"
+test -n "$TLS_EXTRA_IPS"
+printf 'IP de las replicas: %s\n' "$TLS_EXTRA_IPS"
+```
+
+Si la inspeccion falla o no devuelve las seis IP, detener el procedimiento. Revisar que existan dos replicas de cada servicio. No continuar con una lista vacia ni usar las IP de un despliegue anterior.
+
+Durante esta actualizacion hay una interrupcion breve. Detener los servicios TLS sin eliminar sus contenedores conserva las IP inspeccionadas. El script existente genera los nuevos archivos antes de reemplazar los anteriores y conserva un respaldo en output/tls/backup.*. No renombrar el directorio output/tls porque esta montado en los contenedores.
+
+```bash
+docker compose stop api-gateway bff-web bff-mobile bff-atm \
+  ms-payment ms-account ms-customer risk-service batch-service auth-server
+TLS_REGENERATE=true TLS_COPY_BFF=false bash scripts/generar-certificados.sh
+```
+
+Solo si el script termina correctamente, arrancar los mismos contenedores para recargar identidad y confianza TLS:
+
+```bash
+docker compose start auth-server ms-account ms-payment ms-customer \
+  risk-service batch-service bff-web bff-mobile bff-atm api-gateway
+```
+
+Reimportar output/tls/bank.crt como certificado de confianza en Postman y reemplazar el certificado anterior. Mantener SSL certificate verification activado. No es necesario reconstruir las imagenes Java para este cambio.
+
+Las IP internas pueden cambiar al recrear contenedores o cambiar la cantidad de replicas. En ese caso repetir inspeccion, regeneracion y recarga antes de verificar el balanceo. Esta estrategia corresponde a la demostracion temporal; para operacion continua se requieren identidades y emision de certificados automatizadas. TLS_EXTRA_IPS acepta IPv4 separadas por comas; sin TLS_REGENERATE=true el script conserva los archivos existentes y rechaza IP adicionales no cubiertas por su certificado.
+
+Realizar la regresion breve de Postman: 01 UP; 02 y 04 tokens nuevos; 03 y 05 rechazos 401/403; 06 y 24 datos reales sin fallback; 19 y 23 listados por Gateway. Luego ejecutar la carpeta 28 completa. No repetir operaciones de escritura ni todos los bloques funcionales por este cambio de infraestructura.
 
 Esperar dos instancias UP de cada servicio en Eureka y propagacion al Gateway. Si el token expiro, obtener uno nuevo. Realizar lecturas de baja frecuencia para comprobar distribucion, no una prueba de carga:
 
@@ -216,7 +250,7 @@ Resultado esperado: al menos dos valores distintos de X-Service-Instance para ca
 
 La carpeta Postman `28 - Escalabilidad por Gateway (opcional)` realiza esta comprobacion con seis muestras por servicio. Obtener primero el token 02, activar `enableScalingChecks=true`, dejar `expectedInstances=2` y ejecutar solo la carpeta 28 en Runner. Al volver a una replica, desactivar el flag o ajustar expectedInstances a 1. La carpeta no crea ni elimina replicas.
 
-Volver a una replica manteniendo el override:
+Volver a una replica manteniendo el override (si cambia alguna IP, renovar nuevamente su cobertura TLS):
 
 ```bash
 docker compose up -d --remove-orphans \
