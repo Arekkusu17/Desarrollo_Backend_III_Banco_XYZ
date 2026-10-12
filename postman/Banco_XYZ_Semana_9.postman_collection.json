@@ -721,20 +721,21 @@
       ]
     },
     {
-      "name": "13 - Health ms-account",
+      "name": "13 - ms-account registrado en Gateway",
       "request": {
         "method": "GET",
         "header": [],
         "url": {
-          "raw": "{{accountServiceBaseUrl}}/actuator/health",
+          "raw": "{{gatewayBaseUrl}}/actuator/health",
           "host": [
-            "{{accountServiceBaseUrl}}"
+            "{{gatewayBaseUrl}}"
           ],
           "path": [
             "actuator",
             "health"
           ]
-        }
+        },
+        "description": "Comprueba que ms-account aparece en el registro Eureka observado por Gateway. No consulta el actuator del microservicio ni demuestra su disponibilidad individual. Para verificar respuestas de las replicas, ejecutar la carpeta 28."
       },
       "event": [
         {
@@ -742,8 +743,12 @@
           "script": {
             "type": "text/javascript",
             "exec": [
-              "pm.test('ms-account responde 200 OK', function () {",
-              "  pm.response.to.have.status(200);",
+              "pm.test('Gateway responde 200 OK', () => pm.response.to.have.status(200));",
+              "pm.test('ms-account registrado en Eureka', function () {",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.status).to.eql('UP');",
+              "  const apps = json.components?.discoveryComposite?.components?.eureka?.details?.applications;",
+              "  pm.expect(apps?.['MS-ACCOUNT'], 'Instancias registradas').to.be.a('number').and.be.at.least(1);",
               "});"
             ]
           }
@@ -751,7 +756,7 @@
       ]
     },
     {
-      "name": "14 - ms-account listar cuentas",
+      "name": "14 - ms-account listar cuentas por Gateway",
       "request": {
         "method": "GET",
         "header": [
@@ -761,15 +766,16 @@
           }
         ],
         "url": {
-          "raw": "{{accountServiceBaseUrl}}/api/cuentas",
+          "raw": "{{gatewayBaseUrl}}/gateway/cuentas",
           "host": [
-            "{{accountServiceBaseUrl}}"
+            "{{gatewayBaseUrl}}"
           ],
           "path": [
-            "api",
+            "gateway",
             "cuentas"
           ]
-        }
+        },
+        "description": "Acceso por Gateway compatible con una instancia o varias replicas, sin depender de puertos publicados del microservicio."
       },
       "event": [
         {
@@ -787,7 +793,7 @@
       ]
     },
     {
-      "name": "15 - ms-account saldo cuenta",
+      "name": "15 - ms-account saldo cuenta por Gateway",
       "request": {
         "method": "GET",
         "header": [
@@ -797,17 +803,18 @@
           }
         ],
         "url": {
-          "raw": "{{accountServiceBaseUrl}}/api/cuentas/{{accountId}}/saldo",
+          "raw": "{{gatewayBaseUrl}}/gateway/cuentas/{{accountId}}/saldo",
           "host": [
-            "{{accountServiceBaseUrl}}"
+            "{{gatewayBaseUrl}}"
           ],
           "path": [
-            "api",
+            "gateway",
             "cuentas",
             "{{accountId}}",
             "saldo"
           ]
-        }
+        },
+        "description": "Acceso por Gateway compatible con una instancia o varias replicas, sin depender de puertos publicados del microservicio."
       },
       "event": [
         {
@@ -827,20 +834,21 @@
       ]
     },
     {
-      "name": "16 - Health ms-payment",
+      "name": "16 - ms-payment registrado en Gateway",
       "request": {
         "method": "GET",
         "header": [],
         "url": {
-          "raw": "{{paymentServiceBaseUrl}}/actuator/health",
+          "raw": "{{gatewayBaseUrl}}/actuator/health",
           "host": [
-            "{{paymentServiceBaseUrl}}"
+            "{{gatewayBaseUrl}}"
           ],
           "path": [
             "actuator",
             "health"
           ]
-        }
+        },
+        "description": "Comprueba que ms-payment aparece en el registro Eureka observado por Gateway. No consulta el actuator del microservicio ni demuestra su disponibilidad individual. Para verificar respuestas de las replicas, ejecutar la carpeta 28."
       },
       "event": [
         {
@@ -848,8 +856,12 @@
           "script": {
             "type": "text/javascript",
             "exec": [
-              "pm.test('ms-payment responde 200 OK', function () {",
-              "  pm.response.to.have.status(200);",
+              "pm.test('Gateway responde 200 OK', () => pm.response.to.have.status(200));",
+              "pm.test('ms-payment registrado en Eureka', function () {",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.status).to.eql('UP');",
+              "  const apps = json.components?.discoveryComposite?.components?.eureka?.details?.applications;",
+              "  pm.expect(apps?.['MS-PAYMENT'], 'Instancias registradas').to.be.a('number').and.be.at.least(1);",
               "});"
             ]
           }
@@ -857,7 +869,7 @@
       ]
     },
     {
-      "name": "17 - ms-payment crear deposito",
+      "name": "17 - ms-payment crear deposito por Gateway",
       "request": {
         "method": "POST",
         "header": [
@@ -871,12 +883,12 @@
           }
         ],
         "url": {
-          "raw": "{{paymentServiceBaseUrl}}/api/payments/deposits",
+          "raw": "{{gatewayBaseUrl}}/gateway/payments/deposits",
           "host": [
-            "{{paymentServiceBaseUrl}}"
+            "{{gatewayBaseUrl}}"
           ],
           "path": [
-            "api",
+            "gateway",
             "payments",
             "deposits"
           ]
@@ -889,7 +901,8 @@
               "language": "json"
             }
           }
-        }
+        },
+        "description": "Acceso por Gateway compatible con una instancia o varias replicas, sin depender de puertos publicados del microservicio."
       },
       "event": [
         {
@@ -910,7 +923,7 @@
       ]
     },
     {
-      "name": "18 - ms-payment crear transferencia",
+      "name": "18 - ms-payment crear transferencia por Gateway",
       "request": {
         "method": "POST",
         "header": [
@@ -924,12 +937,12 @@
           }
         ],
         "url": {
-          "raw": "{{paymentServiceBaseUrl}}/api/payments/transfers",
+          "raw": "{{gatewayBaseUrl}}/gateway/payments/transfers",
           "host": [
-            "{{paymentServiceBaseUrl}}"
+            "{{gatewayBaseUrl}}"
           ],
           "path": [
-            "api",
+            "gateway",
             "payments",
             "transfers"
           ]
@@ -942,7 +955,8 @@
               "language": "json"
             }
           }
-        }
+        },
+        "description": "Acceso por Gateway compatible con una instancia o varias replicas, sin depender de puertos publicados del microservicio."
       },
       "event": [
         {
@@ -998,20 +1012,21 @@
       ]
     },
     {
-      "name": "20 - Health ms-customer",
+      "name": "20 - ms-customer registrado en Gateway",
       "request": {
         "method": "GET",
         "header": [],
         "url": {
-          "raw": "{{customerServiceBaseUrl}}/actuator/health",
+          "raw": "{{gatewayBaseUrl}}/actuator/health",
           "host": [
-            "{{customerServiceBaseUrl}}"
+            "{{gatewayBaseUrl}}"
           ],
           "path": [
             "actuator",
             "health"
           ]
-        }
+        },
+        "description": "Comprueba que ms-customer aparece en el registro Eureka observado por Gateway. No consulta el actuator del microservicio ni demuestra su disponibilidad individual. Para verificar respuestas de las replicas, ejecutar la carpeta 28."
       },
       "event": [
         {
@@ -1019,8 +1034,12 @@
           "script": {
             "type": "text/javascript",
             "exec": [
-              "pm.test('ms-customer responde 200 OK', function () {",
-              "  pm.response.to.have.status(200);",
+              "pm.test('Gateway responde 200 OK', () => pm.response.to.have.status(200));",
+              "pm.test('ms-customer registrado en Eureka', function () {",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.status).to.eql('UP');",
+              "  const apps = json.components?.discoveryComposite?.components?.eureka?.details?.applications;",
+              "  pm.expect(apps?.['MS-CUSTOMER'], 'Instancias registradas').to.be.a('number').and.be.at.least(1);",
               "});"
             ]
           }
@@ -1028,7 +1047,7 @@
       ]
     },
     {
-      "name": "21 - ms-customer crear perfil",
+      "name": "21 - ms-customer crear perfil por Gateway",
       "request": {
         "method": "POST",
         "header": [
@@ -1042,12 +1061,12 @@
           }
         ],
         "url": {
-          "raw": "{{customerServiceBaseUrl}}/api/customers",
+          "raw": "{{gatewayBaseUrl}}/gateway/customers",
           "host": [
-            "{{customerServiceBaseUrl}}"
+            "{{gatewayBaseUrl}}"
           ],
           "path": [
-            "api",
+            "gateway",
             "customers"
           ]
         },
@@ -1059,7 +1078,8 @@
               "language": "json"
             }
           }
-        }
+        },
+        "description": "Acceso por Gateway compatible con una instancia o varias replicas, sin depender de puertos publicados del microservicio."
       },
       "event": [
         {
@@ -1079,7 +1099,7 @@
       ]
     },
     {
-      "name": "22 - ms-customer consultar perfil",
+      "name": "22 - ms-customer consultar perfil por Gateway",
       "request": {
         "method": "GET",
         "header": [
@@ -1089,16 +1109,17 @@
           }
         ],
         "url": {
-          "raw": "{{customerServiceBaseUrl}}/api/customers/{{customerId}}",
+          "raw": "{{gatewayBaseUrl}}/gateway/customers/{{customerId}}",
           "host": [
-            "{{customerServiceBaseUrl}}"
+            "{{gatewayBaseUrl}}"
           ],
           "path": [
-            "api",
+            "gateway",
             "customers",
             "{{customerId}}"
           ]
-        }
+        },
+        "description": "Acceso por Gateway compatible con una instancia o varias replicas, sin depender de puertos publicados del microservicio."
       },
       "event": [
         {
